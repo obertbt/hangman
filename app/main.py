@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -55,8 +56,13 @@ def main() -> None:
         handlers=build_log_handlers(config),
         force=True,
     )
+    logger = logging.getLogger(__name__)
+    # The PID makes it obvious whether two bots are genuinely running:
+    # on Windows the venv launcher shows a second python.exe that is only
+    # a child of the real interpreter, not a second instance.
+    logger.info("起動しました (PID: %s)", os.getpid())
     if config.log_file:
-        logging.getLogger(__name__).info("ログファイル: %s", config.log_file)
+        logger.info("ログファイル: %s", config.log_file)
 
     github_service = GitHubService(config)
     r2_service = R2Service(config)

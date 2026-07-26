@@ -261,9 +261,23 @@ Get-Content logs\bot.log -Wait -Tail 10 -Encoding UTF8  # リアルタイム表�
 Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, SessionId, StartTime
 ```
 
-**1つだけなら正常**です。`SessionId` が **0** のものがタスクスケジューラ起動分、**1以上**が手動起動分です。
+`SessionId` が **0** のものがタスクスケジューラ起動分、**1以上**が手動起動分です。
 
-2つ以上表示されたら、いったん全部止めてからタスクだけを起動し直します。
+> **`python.exe` が2つ表示されても、多くの場合は正常です。** Windowsの仮想環境では `.venv\Scripts\python.exe` が本体のインタプリタを子プロセスとして起動するため、親子で2つ見えます。親子関係は次で確認できます。
+>
+> ```powershell
+> Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Select-Object ProcessId, ParentProcessId, CommandLine | Format-List
+> ```
+>
+> 片方の `ParentProcessId` がもう片方の `ProcessId` と一致していれば親子＝**Botは1つ**です。
+
+**確実な判別方法**は、ログの `起動しました (PID: ...)` の行を見ることです。この行が同じ稼働時間帯に2回出ていたら、本当に二重起動しています。
+
+```powershell
+Select-String -Path logs\bot.log -Pattern "起動しました" -Encoding UTF8 | Select-Object -Last 5
+```
+
+本当に二重起動していた場合は、いったん全部止めてからタスクだけを起動し直します。
 
 > ⚠️ **この操作はPowerShellを「管理者として実行」で開いてください。** タスクスケジューラが起動したBotはセッション0で動いているため、通常のPowerShellからは「アクセスが拒否されました」となり停止できません。
 
