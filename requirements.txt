@@ -1,0 +1,16 @@
+discord.py>=2.4,<3.0
+boto3>=1.34,<2.0
+PyGithub>=2.3,<3.0
+python-dotenv>=1.0,<2.0
+aiohttp>=3.9,<4.0
+# WindowsにはIANAタイムゾーンDBが同梱されていないため、zoneinfo用に必要
+tzdata>=2024.1
+# SUMMARY_PROVIDER=claude のときだけ必要（ollama / none では未使用）
+anthropic>=0.40
+# WEB_ENABLED=true のときだけ必要
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0
+jinja2>=3.1,<4.0
+python-multipart>=0.0.9
+pytest>=8.0,<10.0
+pytest-asyncio>=0.23,<2.0

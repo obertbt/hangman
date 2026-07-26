@@ -1,0 +1,40 @@
+; Dockerを使わずにLinuxサーバーで常時稼働させる場合のsystemdユニット。
+; 設置手順は README「9.5 24時間稼働させる」を参照してください。
+;
+; 前提:
+;   - リポジトリを /opt/hangman に配置
+;   - /opt/hangman/.venv に仮想環境を作成し requirements.txt をインストール済み
+;   - /opt/hangman/.env に設定を記入済み（chmod 600 推奨）
+;   - 実行用ユーザー hearth を作成済み
+
+[Unit]
+Description=Hearth lifelog Discord bot
+Documentation=https://github.com/obertbt/hangman
+; ネットワークが使えるようになってから起動する
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hearth
+WorkingDirectory=/opt/hangman
+EnvironmentFile=/opt/hangman/.env
+ExecStart=/opt/hangman/.venv/bin/python -m app.main
+
+; 落ちても必ず再起動する。10秒待つのはDiscord側のレート制限を避けるため。
+Restart=always
+RestartSec=10
+
+; ログは journald に流す（journalctl -u hearth-bot で確認）
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hearth-bot
+
+; 最低限の権限で動かす
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

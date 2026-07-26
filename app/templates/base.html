@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ title }} - hearth-life</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --fg: #23201c; --muted: #6f6a62;
+    --card: #ffffff; --line: #e5e0d8; --accent: #a2543a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191715; --fg: #eae6df; --muted: #9a938a;
+      --card: #221f1c; --line: #34302b; --accent: #d98e6a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    line-height: 1.7; padding: 0 1rem 4rem;
+  }
+  .wrap { max-width: 42rem; margin: 0 auto; }
+  header {
+    display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap;
+    padding: 1.25rem 0; border-bottom: 1px solid var(--line); margin-bottom: 1.5rem;
+  }
+  header h1 { font-size: 1.35rem; margin: 0; }
+  nav { margin-left: auto; display: flex; gap: 1rem; align-items: baseline; }
+  a { color: var(--accent); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.15rem; margin-bottom: 1rem;
+  }
+  .time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+  .body { white-space: pre-wrap; overflow-wrap: anywhere; margin: .4rem 0 0; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .pager { display: flex; justify-content: space-between; gap: 1rem; margin: 1.5rem 0; }
+  .list { list-style: none; padding: 0; margin: 0; }
+  .list li { border-bottom: 1px solid var(--line); }
+  .list li:last-child { border-bottom: 0; }
+  .list a { display: block; padding: .85rem .25rem; text-decoration: none; }
+  .shots { display: grid; gap: .5rem; margin-top: .75rem; }
+  .shots img {
+    width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line);
+  }
+  form.inline { display: inline; }
+  button {
+    font: inherit; color: var(--accent); background: none; border: 0;
+    padding: 0; cursor: pointer; text-decoration: underline;
+  }
+  .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>{{ title }}</h1>
+    <nav>
+      <a href="/">日記</a>
+      <a href="/tasks">タスク</a>
+      <form class="inline" method="post" action="/logout"><button type="submit">ログアウト</button></form>
+    </nav>
+  </header>
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,261 @@
+import pytest
+
+from app.config import Config, ConfigError, is_user_allowed, load_config
+
+BASE_ENV = {
+    "DISCORD_BOT_TOKEN": "token",
+    "DISCORD_GUILD_ID": "111",
+    "DISCORD_DAILY_CHANNEL_ID": "222",
+    "GITHUB_TOKEN": "ghp_xxx",
+    "GITHUB_OWNER": "owner",
+    "GITHUB_REPO": "hearth-life",
+    "R2_ACCOUNT_ID": "account",
+    "R2_ACCESS_KEY_ID": "key",
+    "R2_SECRET_ACCESS_KEY": "secret",
+    "R2_BUCKET_NAME": "hearth-media",
+    "R2_ENDPOINT_URL": "https://account.r2.cloudflarestorage.com",
+}
+
+
+def test_load_config_success_with_defaults():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.discord_guild_id == 111
+    assert config.discord_daily_channel_id == 222
+    assert config.github_branch == "main"
+    assert config.timezone == "Asia/Tokyo"
+    assert config.max_attachment_size_mb == 20
+    assert config.allowed_discord_user_ids == frozenset()
+
+
+def test_load_config_missing_required_raises():
+    env = dict(BASE_ENV)
+    del env["GITHUB_TOKEN"]
+    with pytest.raises(ConfigError, match="GITHUB_TOKEN"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_invalid_int_raises():
+    env = dict(BASE_ENV, DISCORD_GUILD_ID="not-a-number")
+    with pytest.raises(ConfigError):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_task_channel_defaults_to_none():
+    assert load_config(env=BASE_ENV, load_dotenv_file=False).discord_task_channel_id is None
+
+
+def test_load_config_parses_task_channel_id():
+    env = dict(BASE_ENV, DISCORD_TASK_CHANNEL_ID="444")
+    assert load_config(env=env, load_dotenv_file=False).discord_task_channel_id == 444
+
+
+def test_load_config_rejects_invalid_task_channel_id():
+    env = dict(BASE_ENV, DISCORD_TASK_CHANNEL_ID="abc")
+    with pytest.raises(ConfigError, match="DISCORD_TASK_CHANNEL_ID"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_signed_url_expiry_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.signed_url_expiry_seconds == 300
+
+
+def test_load_config_signed_url_expiry_custom():
+    env = dict(BASE_ENV, SIGNED_URL_EXPIRY_SECONDS="600")
+    assert load_config(env=env, load_dotenv_file=False).signed_url_expiry_seconds == 600
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "604801", "abc"])
+def test_load_config_rejects_invalid_signed_url_expiry(value):
+    env = dict(BASE_ENV, SIGNED_URL_EXPIRY_SECONDS=value)
+    with pytest.raises(ConfigError, match="SIGNED_URL_EXPIRY_SECONDS"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_notification_times_default_to_4am_and_8pm():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert (config.morning_notification_time.hour, config.morning_notification_time.minute) == (4, 0)
+    assert (config.evening_notification_time.hour, config.evening_notification_time.minute) == (20, 0)
+    assert config.morning_notification_time.tzinfo is not None
+
+
+def test_load_config_parses_custom_notification_times():
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME="07:30", EVENING_NOTIFICATION_TIME="23:05")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert (config.morning_notification_time.hour, config.morning_notification_time.minute) == (7, 30)
+    assert (config.evening_notification_time.hour, config.evening_notification_time.minute) == (23, 5)
+
+
+def test_load_config_empty_notification_time_disables_it():
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME="", EVENING_NOTIFICATION_TIME="")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.morning_notification_time is None
+    assert config.evening_notification_time is None
+
+
+@pytest.mark.parametrize("value", ["7", "07:60", "24:00", "abc", "07:30:00", "-1:00"])
+def test_load_config_rejects_invalid_notification_time(value):
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME=value)
+    with pytest.raises(ConfigError, match="MORNING_NOTIFICATION_TIME"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_parses_notification_channel_id():
+    env = dict(BASE_ENV, NOTIFICATION_CHANNEL_ID="555")
+    assert load_config(env=env, load_dotenv_file=False).notification_channel_id == 555
+
+
+def test_load_config_notification_channel_defaults_to_none():
+    assert load_config(env=BASE_ENV, load_dotenv_file=False).notification_channel_id is None
+
+
+def test_load_config_log_file_defaults_to_none():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.log_file is None
+    assert config.log_max_bytes == 5 * 1024 * 1024
+    assert config.log_backup_count == 3
+
+
+def test_load_config_parses_log_settings():
+    env = dict(BASE_ENV, LOG_FILE="logs/bot.log", LOG_MAX_BYTES="1024", LOG_BACKUP_COUNT="5")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.log_file == "logs/bot.log"
+    assert config.log_max_bytes == 1024
+    assert config.log_backup_count == 5
+
+
+@pytest.mark.parametrize("key", ["LOG_MAX_BYTES", "LOG_BACKUP_COUNT"])
+@pytest.mark.parametrize("value", ["0", "-1", "abc"])
+def test_load_config_rejects_invalid_log_numbers(key, value):
+    env = dict(BASE_ENV, **{key: value})
+    with pytest.raises(ConfigError, match=key):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_web_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.web_enabled is False
+    assert config.web_port == 8787
+    assert config.web_password is None
+
+
+def test_load_config_enables_web_with_password():
+    env = dict(BASE_ENV, WEB_ENABLED="true", WEB_PASSWORD="hunter2hunter2", WEB_PORT="9000")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.web_enabled is True
+    assert config.web_port == 9000
+
+
+def test_load_config_requires_password_when_web_enabled():
+    env = dict(BASE_ENV, WEB_ENABLED="true")
+    with pytest.raises(ConfigError, match="WEB_PASSWORD"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_rejects_short_web_password():
+    env = dict(BASE_ENV, WEB_ENABLED="true", WEB_PASSWORD="short")
+    with pytest.raises(ConfigError, match="8文字以上"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_summary_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.summary_provider == "none"
+    assert config.ollama_url == "http://localhost:11434"
+    assert config.summary_timeout_seconds == 180
+
+
+def test_load_config_parses_ollama_summary_settings():
+    env = dict(
+        BASE_ENV,
+        SUMMARY_PROVIDER="ollama",
+        OLLAMA_MODEL="qwen2.5:7b",
+        SUMMARY_TIMEOUT_SECONDS="60",
+    )
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.summary_provider == "ollama"
+    assert config.ollama_model == "qwen2.5:7b"
+    assert config.summary_timeout_seconds == 60
+
+
+def test_load_config_rejects_unknown_summary_provider():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="gpt")
+    with pytest.raises(ConfigError, match="SUMMARY_PROVIDER"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_requires_api_key_for_claude_provider():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="claude")
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_accepts_claude_provider_with_api_key():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="claude", ANTHROPIC_API_KEY="sk-test")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.summary_provider == "claude"
+    assert config.anthropic_model == "claude-opus-5"
+
+
+def test_load_config_rejects_unknown_timezone():
+    env = dict(BASE_ENV, TIMEZONE="Not/AZone")
+    with pytest.raises(ConfigError, match="tzdata"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_parses_allowed_user_ids():
+    env = dict(BASE_ENV, ALLOWED_DISCORD_USER_IDS="1, 2,3")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.allowed_discord_user_ids == frozenset({1, 2, 3})
+
+
+def _make_config(**overrides) -> Config:
+    defaults = dict(
+        discord_bot_token="t",
+        discord_guild_id=1,
+        discord_daily_channel_id=2,
+        discord_task_channel_id=None,
+        allowed_discord_user_ids=frozenset(),
+        github_token="t",
+        github_owner="o",
+        github_repo="r",
+        github_branch="main",
+        r2_account_id="a",
+        r2_access_key_id="k",
+        r2_secret_access_key="s",
+        r2_bucket_name="b",
+        r2_endpoint_url="https://example.com",
+        timezone="Asia/Tokyo",
+        max_attachment_size_mb=20,
+        signed_url_expiry_seconds=300,
+        notification_channel_id=None,
+        morning_notification_time=None,
+        evening_notification_time=None,
+        log_file=None,
+        log_max_bytes=5 * 1024 * 1024,
+        log_backup_count=3,
+        web_enabled=False,
+        web_host="127.0.0.1",
+        web_port=8787,
+        web_password=None,
+        web_session_hours=720,
+        summary_provider="none",
+        summary_timeout_seconds=180,
+        ollama_url="http://localhost:11434",
+        ollama_model="qwen2.5:7b",
+        anthropic_api_key=None,
+        anthropic_model="claude-opus-5",
+    )
+    defaults.update(overrides)
+    return Config(**defaults)
+
+
+def test_is_user_allowed_returns_true_when_no_allowlist():
+    config = _make_config(allowed_discord_user_ids=frozenset())
+    assert is_user_allowed(config, 999) is True
+
+
+def test_is_user_allowed_restricts_to_list():
+    config = _make_config(allowed_discord_user_ids=frozenset({10, 20}))
+    assert is_user_allowed(config, 10) is True
+    assert is_user_allowed(config, 30) is False

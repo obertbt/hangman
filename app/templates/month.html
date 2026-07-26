@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pager">
+  <a href="/month/{{ prev_month }}">← 前の月</a>
+  <a href="/month/{{ next_month }}">次の月 →</a>
+</div>
+
+{% if dates %}
+<ul class="list card">
+  {% for d in dates %}
+  <li>
+    <a href="/day/{{ d }}">
+      {{ d }}{% if d == today %} <span class="muted">（今日）</span>{% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">この月の記録はまだありません。</p>
+{% endif %}
+{% endblock %}
