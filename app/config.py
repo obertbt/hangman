@@ -60,6 +60,12 @@ class Config:
     log_max_bytes: int
     log_backup_count: int
 
+    healthcheck_url: str | None
+    healthcheck_interval_minutes: int
+
+    weather_latitude: float | None
+    weather_longitude: float | None
+
     web_enabled: bool
     web_host: str
     web_port: int
@@ -95,6 +101,16 @@ def _parse_positive_int(env: Mapping[str, str], key: str, default: int) -> int:
     if value < 1:
         raise ConfigError(f"環境変数 {key} は1以上で指定してください（値: {value}）")
     return value
+
+
+def _parse_optional_float(raw: str | None, key: str) -> float | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"環境変数 {key} は数値で指定してください（値: {raw!r}）") from exc
 
 
 def _parse_optional_channel_id(raw: str | None, key: str) -> int | None:
@@ -206,6 +222,16 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         env.get("EVENING_NOTIFICATION_TIME", "20:00"), "EVENING_NOTIFICATION_TIME", tzinfo
     )
 
+    weather_latitude = _parse_optional_float(env.get("WEATHER_LATITUDE"), "WEATHER_LATITUDE")
+    weather_longitude = _parse_optional_float(
+        env.get("WEATHER_LONGITUDE"), "WEATHER_LONGITUDE"
+    )
+    if (weather_latitude is None) != (weather_longitude is None):
+        raise ConfigError(
+            "WEATHER_LATITUDE と WEATHER_LONGITUDE は両方とも設定するか、"
+            "両方とも空にしてください"
+        )
+
     web_enabled = (env.get("WEB_ENABLED", "").strip().lower() or "false") in (
         "1",
         "true",
@@ -259,6 +285,12 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         log_file=(env.get("LOG_FILE", "").strip() or None),
         log_max_bytes=_parse_positive_int(env, "LOG_MAX_BYTES", 5 * 1024 * 1024),
         log_backup_count=_parse_positive_int(env, "LOG_BACKUP_COUNT", 3),
+        healthcheck_url=env.get("HEALTHCHECK_URL", "").strip() or None,
+        healthcheck_interval_minutes=_parse_positive_int(
+            env, "HEALTHCHECK_INTERVAL_MINUTES", 60
+        ),
+        weather_latitude=weather_latitude,
+        weather_longitude=weather_longitude,
         web_enabled=web_enabled,
         web_host=env.get("WEB_HOST", "").strip() or "0.0.0.0",
         web_port=_parse_positive_int(env, "WEB_PORT", 8787),

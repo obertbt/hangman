@@ -45,6 +45,7 @@ class MarkdownEntryData:
     message_id: int
     iso_datetime: str
     r2_keys: list[str] = field(default_factory=list)
+    weather: str | None = None
 
 
 @dataclass

@@ -56,6 +56,10 @@ def build_entry_markdown(entry: MarkdownEntryData) -> str:
         f"- DiscordメッセージID: {entry.message_id}",
         f"- Discord投稿日時: {entry.iso_datetime}",
     ]
+    # Must stay inside the metadata block (after 投稿者) so the parser
+    # does not mistake it for diary text.
+    if entry.weather:
+        lines.append(f"- 天気: {entry.weather}")
     if entry.r2_keys:
         lines.append("- 添付ファイル:")
         for key in entry.r2_keys:

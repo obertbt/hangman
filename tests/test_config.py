@@ -234,6 +234,10 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        healthcheck_url=None,
+        healthcheck_interval_minutes=60,
+        weather_latitude=None,
+        weather_longitude=None,
         web_enabled=False,
         web_host="127.0.0.1",
         web_port=8787,
@@ -259,3 +263,49 @@ def test_is_user_allowed_restricts_to_list():
     config = _make_config(allowed_discord_user_ids=frozenset({10, 20}))
     assert is_user_allowed(config, 10) is True
     assert is_user_allowed(config, 30) is False
+
+
+def test_load_config_healthcheck_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.healthcheck_url is None
+    assert config.healthcheck_interval_minutes == 60
+
+
+def test_load_config_parses_healthcheck_settings():
+    env = dict(
+        BASE_ENV,
+        HEALTHCHECK_URL="https://hc-ping.com/uuid",
+        HEALTHCHECK_INTERVAL_MINUTES="15",
+    )
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.healthcheck_url == "https://hc-ping.com/uuid"
+    assert config.healthcheck_interval_minutes == 15
+
+
+def test_load_config_weather_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.weather_latitude is None
+    assert config.weather_longitude is None
+
+
+def test_load_config_parses_weather_coordinates():
+    env = dict(BASE_ENV, WEATHER_LATITUDE="35.68", WEATHER_LONGITUDE="139.76")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.weather_latitude == pytest.approx(35.68)
+    assert config.weather_longitude == pytest.approx(139.76)
+
+
+@pytest.mark.parametrize(
+    "env_extra",
+    [{"WEATHER_LATITUDE": "35.68"}, {"WEATHER_LONGITUDE": "139.76"}],
+)
+def test_load_config_rejects_half_configured_coordinates(env_extra):
+    env = dict(BASE_ENV, **env_extra)
+    with pytest.raises(ConfigError, match="WEATHER_"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_rejects_non_numeric_latitude():
+    env = dict(BASE_ENV, WEATHER_LATITUDE="north", WEATHER_LONGITUDE="139.76")
+    with pytest.raises(ConfigError, match="WEATHER_LATITUDE"):
+        load_config(env=env, load_dotenv_file=False)

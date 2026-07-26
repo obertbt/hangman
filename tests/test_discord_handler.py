@@ -12,13 +12,17 @@ from app.discord_handler import (
     build_success_reply,
     describe_rejection,
     filter_image_attachments,
+    accepted_task_channels,
+    is_dedicated_task_channel,
     is_task_command,
+    is_task_message,
     notification_channel_id,
     parse_task_text,
     process_message,
     process_task_command,
     should_process,
     task_channel_id,
+    task_text_of,
 )
 from app.github_service import GitHubIssueError, GitHubSaveError
 from app.models import IncomingAttachment, IncomingMessage
@@ -51,6 +55,10 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        healthcheck_url=None,
+        healthcheck_interval_minutes=60,
+        weather_latitude=None,
+        weather_longitude=None,
         web_enabled=False,
         web_host="127.0.0.1",
         web_port=8787,
@@ -394,13 +402,28 @@ async def test_process_task_command_reports_failure_stage():
 
 
 @pytest.mark.asyncio
-async def test_process_task_command_ignores_wrong_channel():
+async def test_process_task_command_ignores_unrelated_channel():
     config = _make_config(discord_task_channel_id=333)
-    msg = _make_message(content="!task 牛乳を買う", channel_id=222)
+    msg = _make_message(content="!task 牛乳を買う", channel_id=999)
     github_service = MagicMock()
 
     assert await process_task_command(msg, config, github_service) is None
     github_service.create_issue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_task_prefix_in_daily_still_accepted_with_task_channel_configured():
+    """Configuring a task channel adds a second entry point; it does not
+    take !task away from #daily."""
+    config = _make_config(discord_task_channel_id=333)
+    msg = _make_message(content="!task 牛乳を買う", channel_id=222)
+    github_service = MagicMock()
+    github_service.create_issue.return_value = MagicMock(number=4, url="https://x/4")
+
+    result = await process_task_command(msg, config, github_service)
+
+    assert result.success is True
+    assert github_service.create_issue.call_args[0][0].text == "牛乳を買う"
 
 
 @pytest.mark.asyncio
@@ -416,3 +439,114 @@ async def test_process_task_command_ignores_disallowed_user():
 def test_notification_channel_id_falls_back_to_daily_channel():
     assert notification_channel_id(_make_config(notification_channel_id=None)) == 222
     assert notification_channel_id(_make_config(notification_channel_id=555)) == 555
+
+
+TASK_CHANNEL = 333
+
+
+def test_dedicated_task_channel_requires_explicit_config():
+    # Without DISCORD_TASK_CHANNEL_ID the fallback is #daily, which must
+    # never swallow diary posts as tasks.
+    assert is_dedicated_task_channel(_make_config(discord_task_channel_id=None), 222) is False
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    assert is_dedicated_task_channel(config, TASK_CHANNEL) is True
+    assert is_dedicated_task_channel(config, 222) is False
+
+
+def test_plain_post_in_task_channel_is_a_task():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=TASK_CHANNEL, content="牛乳を買う")
+    assert is_task_message(config, msg) is True
+    assert task_text_of(config, msg) == "牛乳を買う"
+
+
+def test_task_prefix_still_works_in_task_channel():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=TASK_CHANNEL, content="!task 牛乳を買う")
+    assert is_task_message(config, msg) is True
+    assert task_text_of(config, msg) == "牛乳を買う"
+
+
+def test_plain_post_in_daily_channel_is_not_a_task():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=222, content="今日はホッケーの練習。")
+    assert is_task_message(config, msg) is False
+
+
+def test_task_prefix_in_daily_channel_is_still_a_task():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=222, content="!task 牛乳を買う")
+    assert is_task_message(config, msg) is True
+
+
+def test_diary_post_is_not_a_task_when_no_task_channel_configured():
+    config = _make_config(discord_task_channel_id=None)
+    assert is_task_message(config, _make_message(content="今日の記録")) is False
+
+
+def test_empty_post_in_task_channel_is_not_a_task():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=TASK_CHANNEL, content="   ")
+    assert is_task_message(config, msg) is False
+
+
+def test_accepted_task_channels_includes_both():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    assert accepted_task_channels(config) == {222, TASK_CHANNEL}
+    assert accepted_task_channels(_make_config()) == {222}
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_accepts_plain_post_in_task_channel():
+    config = _make_config(discord_task_channel_id=TASK_CHANNEL)
+    msg = _make_message(channel_id=TASK_CHANNEL, content="牛乳を買う")
+    github_service = MagicMock()
+    github_service.create_issue.return_value = MagicMock(number=9, url="https://x/9")
+
+    result = await process_task_command(msg, config, github_service)
+
+    assert result.success is True
+    assert github_service.create_issue.call_args[0][0].text == "牛乳を買う"
+
+
+@pytest.mark.asyncio
+async def test_process_message_records_weather():
+    config = _make_config()
+    msg = _make_message()
+    github_service = MagicMock()
+
+    class FakeWeather:
+        async def current_weather(self):
+            return "晴れ 24.5℃"
+
+    async def downloader(url, max_bytes):
+        return b"data"
+
+    result = await process_message(
+        msg, config, github_service, MagicMock(), downloader, FakeWeather()
+    )
+
+    assert result.success is True
+    assert github_service.save_entry.call_args[0][1].weather == "晴れ 24.5℃"
+
+
+@pytest.mark.asyncio
+async def test_process_message_saves_without_weather_when_lookup_fails():
+    """A weather outage must not cost the entry."""
+    config = _make_config()
+    msg = _make_message()
+    github_service = MagicMock()
+
+    class FailingWeather:
+        async def current_weather(self):
+            return None
+
+    async def downloader(url, max_bytes):
+        return b"data"
+
+    result = await process_message(
+        msg, config, github_service, MagicMock(), downloader, FailingWeather()
+    )
+
+    assert result.success is True
+    assert github_service.save_entry.call_args[0][1].weather is None

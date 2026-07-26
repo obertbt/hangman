@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.notifications import MAX_LISTED_ISSUES, build_evening_message, build_morning_message
 from app.summary_service import Summarizer, create_summarizer, summarize_entries
+from app.weather_service import WeatherService
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
     R2Service,
@@ -83,6 +84,42 @@ def task_channel_id(config: Config) -> int:
     return config.discord_daily_channel_id
 
 
+def is_dedicated_task_channel(config: Config, channel_id: int) -> bool:
+    """True only for an explicitly configured task channel.
+
+    Without DISCORD_TASK_CHANNEL_ID the task channel falls back to
+    #daily, where treating every post as a task would turn the diary
+    into Issues — so the fallback must never count as dedicated.
+    """
+    return (
+        config.discord_task_channel_id is not None
+        and channel_id == config.discord_task_channel_id
+    )
+
+
+def accepted_task_channels(config: Config) -> set[int]:
+    channels = {config.discord_daily_channel_id}
+    if config.discord_task_channel_id is not None:
+        channels.add(config.discord_task_channel_id)
+    return channels
+
+
+def is_task_message(config: Config, msg: IncomingMessage) -> bool:
+    """In a dedicated task channel every post is a task; elsewhere the
+    !task prefix is what marks one.
+    """
+    if is_dedicated_task_channel(config, msg.channel_id):
+        return bool(msg.content.strip())
+    return is_task_command(msg.content)
+
+
+def task_text_of(config: Config, msg: IncomingMessage) -> str:
+    """The task body, with the !task prefix stripped when present."""
+    if is_task_command(msg.content):
+        return parse_task_text(msg.content)
+    return msg.content.strip()
+
+
 def describe_task_rejection(config: Config, msg: IncomingMessage) -> str | None:
     if msg.author_is_bot:
         return "Botの投稿のため無視しました"
@@ -91,10 +128,10 @@ def describe_task_rejection(config: Config, msg: IncomingMessage) -> str | None:
             f"対象外のサーバーです（受信: {msg.guild_id} / 設定 DISCORD_GUILD_ID: "
             f"{config.discord_guild_id}）"
         )
-    expected_channel = task_channel_id(config)
-    if msg.channel_id != expected_channel:
+    accepted = accepted_task_channels(config)
+    if msg.channel_id not in accepted:
         return (
-            f"!task の対象外チャンネルです（受信: {msg.channel_id} / 対象: {expected_channel}）"
+            f"タスクの対象外チャンネルです（受信: {msg.channel_id} / 対象: {sorted(accepted)}）"
         )
     if not is_user_allowed(config, msg.author_id):
         return f"許可されていないユーザーです（受信: {msg.author_id}）"
@@ -177,6 +214,7 @@ async def process_message(
     github_service: GitHubService,
     r2_service: R2Service,
     downloader: Downloader,
+    weather_service: WeatherService | None = None,
 ) -> ProcessResult | None:
     """Core orchestration, independent of discord.py.
 
@@ -214,6 +252,9 @@ async def process_message(
             return ProcessResult(False, build_failure_reply(STAGE_R2_UPLOAD))
         uploaded_keys.append(key)
 
+    # Best effort: a weather lookup must never block saving the entry.
+    weather = await weather_service.current_weather() if weather_service else None
+
     entry = MarkdownEntryData(
         time_str=f"{jst_dt:%H:%M}",
         content=msg.content,
@@ -222,6 +263,7 @@ async def process_message(
         message_id=msg.message_id,
         iso_datetime=jst_dt.isoformat(),
         r2_keys=uploaded_keys,
+        weather=weather,
     )
 
     try:
@@ -252,7 +294,7 @@ async def process_task_command(
         logger.info("!taskを無視しました: message_id=%s 理由=%s", msg.message_id, rejection)
         return None
 
-    text = parse_task_text(msg.content)
+    text = task_text_of(config, msg)
     if not text:
         return ProcessResult(False, build_task_usage_reply())
 
@@ -323,6 +365,7 @@ class LifelogClient(discord.Client):
         github_service: GitHubService,
         r2_service: R2Service,
         summarizer: Summarizer | None = None,
+        weather_service: WeatherService | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -330,10 +373,14 @@ class LifelogClient(discord.Client):
         self.github_service = github_service
         self.r2_service = r2_service
         self.summarizer = summarizer if summarizer is not None else create_summarizer(config)
+        self.weather_service = (
+            weather_service if weather_service is not None else WeatherService(config)
+        )
         self._http_session: aiohttp.ClientSession | None = None
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
         self._notification_loops: list[tasks.Loop] = []
+        self._healthcheck_loop: tasks.Loop | None = None
         self._web_server = None
         self._web_task: asyncio.Task | None = None
 
@@ -362,7 +409,40 @@ class LifelogClient(discord.Client):
                 "applications.commands スコープが含まれているか確認してください。"
             )
         self._start_notification_loops()
+        self._start_healthcheck_loop()
         self._start_web_server()
+
+    def _start_healthcheck_loop(self) -> None:
+        """Ping an external monitor so a stalled bot is noticed.
+
+        Nothing else reports downtime: if the machine reboots and the bot
+        fails to come back, the only symptom is notifications quietly not
+        arriving. A monitor that alerts on *missing* pings covers that.
+        """
+        url = self.config.healthcheck_url
+        if not url:
+            logger.info("死活監視は無効です（HEALTHCHECK_URL 未設定）")
+            return
+
+        @tasks.loop(minutes=self.config.healthcheck_interval_minutes)
+        async def ping() -> None:
+            assert self._http_session is not None
+            try:
+                async with self._http_session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                    r.raise_for_status()
+            except Exception:
+                # Losing a ping is not worth stopping the bot over.
+                logger.warning("死活監視のpingに失敗しました", exc_info=True)
+
+        @ping.before_loop
+        async def before_ping() -> None:
+            await self.wait_until_ready()
+
+        ping.start()
+        self._healthcheck_loop = ping
+        logger.info(
+            "死活監視を有効にしました（%s分ごと）", self.config.healthcheck_interval_minutes
+        )
 
     def _start_web_server(self) -> None:
         if not self.config.web_enabled:
@@ -425,6 +505,8 @@ class LifelogClient(discord.Client):
     async def close(self) -> None:
         for loop in self._notification_loops:
             loop.cancel()
+        if self._healthcheck_loop is not None:
+            self._healthcheck_loop.cancel()
         if self._web_server is not None:
             self._web_server.should_exit = True
         if self._web_task is not None:
@@ -530,7 +612,7 @@ class LifelogClient(discord.Client):
 
         incoming = to_incoming_message(message)
         try:
-            if is_task_command(incoming.content):
+            if is_task_message(self.config, incoming):
                 result = await process_task_command(incoming, self.config, self.github_service)
             else:
                 result = await process_message(
@@ -539,6 +621,7 @@ class LifelogClient(discord.Client):
                     self.github_service,
                     self.r2_service,
                     self._download_attachment,
+                    self.weather_service,
                 )
         except Exception:
             logger.exception("メッセージ処理中に想定外のエラーが発生しました: message_id=%s", message.id)
