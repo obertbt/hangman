@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 from app.r2_service import (
     R2Service,
     build_object_key,
+    describe_usage,
+    format_bytes,
     sanitize_filename,
     validate_object_key,
 )
@@ -141,3 +143,43 @@ def test_generate_presigned_url_passes_bucket_key_and_expiry():
         Params={"Bucket": "hearth-media", "Key": "images/2026/07/26/123-photo.png"},
         ExpiresIn=300,
     )
+
+
+def test_format_bytes_scales_units():
+    assert format_bytes(512) == "512 B"
+    assert format_bytes(2048) == "2.0 KB"
+    assert format_bytes(5 * 1024**2) == "5.0 MB"
+    assert format_bytes(3 * 1024**3) == "3.0 GB"
+
+
+def test_format_bytes_keeps_huge_values_in_gb():
+    assert format_bytes(2048 * 1024**3).endswith("GB")
+
+
+def test_describe_usage_reports_free_tier_share():
+    text = describe_usage(120, 1024**3)  # 1 GB of the 10 GB allowance
+    assert "120件" in text
+    assert "1.0 GB" in text
+    assert "10.0%" in text
+
+
+def test_calculate_usage_sums_across_pages():
+    service, client = _make_service()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Size": 100}, {"Size": 200}]},
+        {"Contents": [{"Size": 300}]},
+    ]
+    client.get_paginator.return_value = paginator
+
+    assert service.calculate_usage() == (3, 600)
+    client.get_paginator.assert_called_once_with("list_objects_v2")
+
+
+def test_calculate_usage_handles_empty_bucket():
+    service, client = _make_service()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [{}]
+    client.get_paginator.return_value = paginator
+
+    assert service.calculate_usage() == (0, 0)

@@ -234,6 +234,10 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        periodic_summary_enabled=False,
+        periodic_summary_time=None,
+        periodic_summary_max_input_chars=12000,
+        report_storage_usage=True,
         healthcheck_url=None,
         healthcheck_interval_minutes=60,
         weather_latitude=None,
@@ -309,3 +313,28 @@ def test_load_config_rejects_non_numeric_latitude():
     env = dict(BASE_ENV, WEATHER_LATITUDE="north", WEATHER_LONGITUDE="139.76")
     with pytest.raises(ConfigError, match="WEATHER_LATITUDE"):
         load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_periodic_summary_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.periodic_summary_enabled is False
+    assert config.periodic_summary_max_input_chars == 12000
+    assert config.report_storage_usage is True
+
+
+def test_load_config_enables_periodic_summary():
+    env = dict(BASE_ENV, PERIODIC_SUMMARY_ENABLED="true", PERIODIC_SUMMARY_TIME="06:30")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.periodic_summary_enabled is True
+    assert (config.periodic_summary_time.hour, config.periodic_summary_time.minute) == (6, 30)
+
+
+def test_load_config_rejects_enabled_summary_without_time():
+    env = dict(BASE_ENV, PERIODIC_SUMMARY_ENABLED="true", PERIODIC_SUMMARY_TIME="")
+    with pytest.raises(ConfigError, match="PERIODIC_SUMMARY_TIME"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_storage_usage_can_be_disabled():
+    env = dict(BASE_ENV, REPORT_STORAGE_USAGE="false")
+    assert load_config(env=env, load_dotenv_file=False).report_storage_usage is False

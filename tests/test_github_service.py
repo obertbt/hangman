@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
@@ -349,3 +349,92 @@ def test_fetch_daily_markdown_returns_text():
     repo.get_contents.return_value = FakeContentFile(ENTRY_MARKDOWN)
     service = _service_with_repo(repo)
     assert service.fetch_daily_markdown(datetime(2026, 7, 26, tzinfo=JST)) == ENTRY_MARKDOWN
+
+
+class FakeDirEntry:
+    def __init__(self, name: str):
+        self.name = name
+
+
+def _repo_with_tree(tree: dict[str, list[str]]):
+    """A repo whose get_contents serves month listings and day files from `tree`."""
+    repo = MagicMock()
+
+    def get_contents(path, ref=None):
+        if path in tree:
+            return [FakeDirEntry(name) for name in tree[path]]
+        month_dir, _, filename = path.rpartition("/")
+        if filename in tree.get(month_dir, []):
+            return FakeContentFile(f"## 09:00\n\n{filename} の記録\n")
+        raise UnknownObjectException(404, {"message": "Not Found"})
+
+    repo.get_contents.side_effect = get_contents
+    return repo
+
+
+def test_fetch_entries_in_range_spans_months_and_sorts_oldest_first():
+    repo = _repo_with_tree(
+        {
+            "daily/2026/06": ["2026-06-27.md", "2026-06-29.md"],
+            "daily/2026/07": ["2026-07-03.md", "2026-07-09.md"],
+        }
+    )
+    service = _service_with_repo(repo)
+
+    entries = service.fetch_entries_in_range(date(2026, 6, 28), date(2026, 7, 5))
+
+    assert [date_str for date_str, _ in entries] == ["2026-06-29", "2026-07-03"]
+    assert "2026-06-29.md の記録" in entries[0][1]
+
+
+def test_fetch_entries_in_range_skips_months_without_a_directory():
+    repo = _repo_with_tree({"daily/2026/07": ["2026-07-03.md"]})
+    service = _service_with_repo(repo)
+
+    entries = service.fetch_entries_in_range(date(2026, 6, 1), date(2026, 7, 31))
+
+    assert [date_str for date_str, _ in entries] == ["2026-07-03"]
+
+
+def test_fetch_entries_in_range_ignores_files_that_are_not_dates():
+    repo = _repo_with_tree({"daily/2026/07": ["README.md", "2026-07-03.md"]})
+    service = _service_with_repo(repo)
+
+    entries = service.fetch_entries_in_range(date(2026, 7, 1), date(2026, 7, 31))
+
+    assert [date_str for date_str, _ in entries] == ["2026-07-03"]
+
+
+def test_save_summary_creates_file_when_missing():
+    repo = MagicMock()
+    repo.get_contents.side_effect = UnknownObjectException(404, {"message": "Not Found"})
+    service = _service_with_repo(repo)
+
+    service.save_summary("summary/2026-07.md", "# 2026年7月", "Add monthly summary")
+
+    repo.create_file.assert_called_once_with(
+        "summary/2026-07.md", "Add monthly summary", "# 2026年7月", branch="main"
+    )
+    repo.update_file.assert_not_called()
+
+
+def test_save_summary_replaces_an_existing_file():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile("古いまとめ", sha="sha-9")
+    service = _service_with_repo(repo)
+
+    service.save_summary("summary/2026-07.md", "# 2026年7月", "Add monthly summary")
+
+    repo.update_file.assert_called_once_with(
+        "summary/2026-07.md", "Add monthly summary", "# 2026年7月", "sha-9", branch="main"
+    )
+    repo.create_file.assert_not_called()
+
+
+def test_save_summary_raises_friendly_error_on_github_failure():
+    repo = MagicMock()
+    repo.get_contents.side_effect = GithubException(500, {"message": "boom"})
+    service = _service_with_repo(repo)
+
+    with pytest.raises(GitHubSaveError):
+        service.save_summary("summary/2026-07.md", "# 2026年7月", "Add monthly summary")

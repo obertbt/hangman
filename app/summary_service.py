@@ -32,28 +32,49 @@ SYSTEM_PROMPT = (
     "箇条書きにせず、短い文章で書いてください。"
 )
 
+PERIOD_SYSTEM_PROMPT = (
+    "あなたは日記の要約アシスタントです。"
+    "与えられた一定期間の記録を、日本語で5〜8行にまとめてください。"
+    "繰り返し出てくる活動や、その期間の傾向が分かるように書いてください。"
+    "記録に書かれている事実だけを使い、推測や励ましの言葉は追加しないでください。"
+)
+
 MAX_SUMMARY_LENGTH = 500
+MAX_PERIOD_SUMMARY_LENGTH = 2000
 
 
-def build_prompt(entries: list[str]) -> str:
+DEFAULT_HEADING = "以下は今日の記録です。"
+
+
+def build_prompt(entries: list[str], heading: str = DEFAULT_HEADING) -> str:
     numbered = "\n".join(f"{i}. {entry}" for i, entry in enumerate(entries, start=1))
-    return f"以下は今日の記録です。\n\n{numbered}"
+    return f"{heading}\n\n{numbered}"
 
 
-def clean_summary(text: str) -> str | None:
+def period_prompt_heading(label: str) -> str:
+    return f"以下は{label}の記録です（日付ごとにまとめてあります）。"
+
+
+def clean_summary(text: str, max_length: int = MAX_SUMMARY_LENGTH) -> str | None:
     """Trim the model's reply to something fit for a Discord message."""
     summary = text.strip()
     if not summary:
         return None
-    if len(summary) > MAX_SUMMARY_LENGTH:
-        summary = summary[: MAX_SUMMARY_LENGTH - 1] + "…"
+    if len(summary) > max_length:
+        summary = summary[: max_length - 1] + "…"
     return summary
 
 
 class Summarizer:
     """Base class; the default implementation summarizes nothing."""
 
-    async def summarize(self, entries: list[str]) -> str | None:
+    async def summarize(
+        self,
+        entries: list[str],
+        system_prompt: str = SYSTEM_PROMPT,
+        max_length: int = MAX_SUMMARY_LENGTH,
+        heading: str = DEFAULT_HEADING,
+    ) -> str | None:
         return None
 
 
@@ -65,12 +86,18 @@ class OllamaSummarizer(Summarizer):
         self._model = config.ollama_model
         self._timeout = config.summary_timeout_seconds
 
-    async def summarize(self, entries: list[str]) -> str | None:
+    async def summarize(
+        self,
+        entries: list[str],
+        system_prompt: str = SYSTEM_PROMPT,
+        max_length: int = MAX_SUMMARY_LENGTH,
+        heading: str = DEFAULT_HEADING,
+    ) -> str | None:
         payload = {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_prompt(entries)},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": build_prompt(entries, heading)},
             ],
             "stream": False,
         }
@@ -79,7 +106,7 @@ class OllamaSummarizer(Summarizer):
             async with session.post(self._url, json=payload) as response:
                 response.raise_for_status()
                 data = await response.json()
-        return clean_summary(data.get("message", {}).get("content", ""))
+        return clean_summary(data.get("message", {}).get("content", ""), max_length)
 
 
 class ClaudeSummarizer(Summarizer):
@@ -90,7 +117,9 @@ class ClaudeSummarizer(Summarizer):
         self._model = config.anthropic_model
         self._timeout = config.summary_timeout_seconds
 
-    def _summarize_sync(self, entries: list[str]) -> str | None:
+    def _summarize_sync(
+        self, entries: list[str], system_prompt: str, max_length: int, heading: str
+    ) -> str | None:
         # Imported lazily so the anthropic package is only required when
         # this provider is actually selected.
         import anthropic
@@ -99,17 +128,25 @@ class ClaudeSummarizer(Summarizer):
         response = client.messages.create(
             model=self._model,
             max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_prompt(entries)}],
+            system=system_prompt,
+            messages=[{"role": "user", "content": build_prompt(entries, heading)}],
         )
         if response.stop_reason == "refusal":
             logger.warning("要約リクエストが拒否されました")
             return None
         text = "".join(block.text for block in response.content if block.type == "text")
-        return clean_summary(text)
+        return clean_summary(text, max_length)
 
-    async def summarize(self, entries: list[str]) -> str | None:
-        return await asyncio.to_thread(self._summarize_sync, entries)
+    async def summarize(
+        self,
+        entries: list[str],
+        system_prompt: str = SYSTEM_PROMPT,
+        max_length: int = MAX_SUMMARY_LENGTH,
+        heading: str = DEFAULT_HEADING,
+    ) -> str | None:
+        return await asyncio.to_thread(
+            self._summarize_sync, entries, system_prompt, max_length, heading
+        )
 
 
 def create_summarizer(config: Config) -> Summarizer:
@@ -120,12 +157,18 @@ def create_summarizer(config: Config) -> Summarizer:
     return Summarizer()
 
 
-async def summarize_entries(summarizer: Summarizer, entries: list[str]) -> str | None:
+async def summarize_entries(
+    summarizer: Summarizer,
+    entries: list[str],
+    system_prompt: str = SYSTEM_PROMPT,
+    max_length: int = MAX_SUMMARY_LENGTH,
+    heading: str = DEFAULT_HEADING,
+) -> str | None:
     """Best-effort summary: any failure is logged and yields None."""
     if not entries:
         return None
     try:
-        return await summarizer.summarize(entries)
+        return await summarizer.summarize(entries, system_prompt, max_length, heading)
     except Exception:
         logger.exception("要約の生成に失敗しました")
         return None

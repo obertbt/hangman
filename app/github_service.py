@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime
 
 from github import Auth, Github, GithubException, UnknownObjectException
 
 from app.config import Config
 from app.diary import entry_bodies
 from app.models import CreatedIssue, IssueSummary, MarkdownEntryData, TaskData
+from app.periodic_summary import months_between
 
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
@@ -167,6 +168,39 @@ class GitHubService:
             contents = [contents]
         dates = [item.name[:-3] for item in contents if item.name.endswith(".md")]
         return sorted(dates, reverse=True)
+
+    def fetch_entries_in_range(self, start: date, end: date) -> list[tuple[str, str]]:
+        """(YYYY-MM-DD, markdown) for days with entries, oldest first.
+
+        Lists each month the range touches and fetches only the days that
+        exist, rather than probing every date in the range.
+        """
+        results: list[tuple[str, str]] = []
+        for year, month in months_between(start, end):
+            for date_str in sorted(self.list_dates_in_month(year, month)):
+                try:
+                    day = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if not (start <= day <= end):
+                    continue
+                markdown = self.fetch_daily_markdown(datetime(day.year, day.month, day.day))
+                if markdown:
+                    results.append((date_str, markdown))
+        return results
+
+    def save_summary(self, path: str, content: str, commit_message: str) -> None:
+        """Create the summary file, or replace it if a run already wrote one."""
+        repo = self._repo()
+        branch = self._config.github_branch
+        try:
+            try:
+                existing = repo.get_contents(path, ref=branch)
+                repo.update_file(path, commit_message, content, existing.sha, branch=branch)
+            except UnknownObjectException:
+                repo.create_file(path, commit_message, content, branch=branch)
+        except GithubException as exc:
+            raise GitHubSaveError(f"まとめの保存に失敗しました: {exc}") from exc
 
     def list_open_issues(self, limit: int) -> list[IssueSummary]:
         """Open Issues, newest first. Pull requests are excluded."""

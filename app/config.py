@@ -60,6 +60,11 @@ class Config:
     log_max_bytes: int
     log_backup_count: int
 
+    periodic_summary_enabled: bool
+    periodic_summary_time: time_of_day | None
+    periodic_summary_max_input_chars: int
+    report_storage_usage: bool
+
     healthcheck_url: str | None
     healthcheck_interval_minutes: int
 
@@ -101,6 +106,13 @@ def _parse_positive_int(env: Mapping[str, str], key: str, default: int) -> int:
     if value < 1:
         raise ConfigError(f"環境変数 {key} は1以上で指定してください（値: {value}）")
     return value
+
+
+def _parse_bool(raw: str | None, default: bool) -> bool:
+    raw = (raw or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
 
 
 def _parse_optional_float(raw: str | None, key: str) -> float | None:
@@ -222,6 +234,16 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         env.get("EVENING_NOTIFICATION_TIME", "20:00"), "EVENING_NOTIFICATION_TIME", tzinfo
     )
 
+    periodic_summary_enabled = _parse_bool(env.get("PERIODIC_SUMMARY_ENABLED"), False)
+    periodic_summary_time = parse_time_of_day(
+        env.get("PERIODIC_SUMMARY_TIME", "05:00"), "PERIODIC_SUMMARY_TIME", tzinfo
+    )
+    if periodic_summary_enabled and periodic_summary_time is None:
+        raise ConfigError(
+            "PERIODIC_SUMMARY_ENABLED=true のときは PERIODIC_SUMMARY_TIME を"
+            "HH:MM 形式で指定してください"
+        )
+
     weather_latitude = _parse_optional_float(env.get("WEATHER_LATITUDE"), "WEATHER_LATITUDE")
     weather_longitude = _parse_optional_float(
         env.get("WEATHER_LONGITUDE"), "WEATHER_LONGITUDE"
@@ -232,12 +254,7 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             "両方とも空にしてください"
         )
 
-    web_enabled = (env.get("WEB_ENABLED", "").strip().lower() or "false") in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    web_enabled = _parse_bool(env.get("WEB_ENABLED"), False)
     web_password = env.get("WEB_PASSWORD", "").strip() or None
     if web_enabled and not web_password:
         raise ConfigError(
@@ -285,6 +302,12 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         log_file=(env.get("LOG_FILE", "").strip() or None),
         log_max_bytes=_parse_positive_int(env, "LOG_MAX_BYTES", 5 * 1024 * 1024),
         log_backup_count=_parse_positive_int(env, "LOG_BACKUP_COUNT", 3),
+        periodic_summary_enabled=periodic_summary_enabled,
+        periodic_summary_time=periodic_summary_time,
+        periodic_summary_max_input_chars=_parse_positive_int(
+            env, "PERIODIC_SUMMARY_MAX_INPUT_CHARS", 12000
+        ),
+        report_storage_usage=_parse_bool(env.get("REPORT_STORAGE_USAGE"), True),
         healthcheck_url=env.get("HEALTHCHECK_URL", "").strip() or None,
         healthcheck_interval_minutes=_parse_positive_int(
             env, "HEALTHCHECK_INTERVAL_MINUTES", 60

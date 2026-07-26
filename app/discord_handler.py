@@ -34,12 +34,27 @@ from app.models import (
     TaskData,
 )
 from app.notifications import MAX_LISTED_ISSUES, build_evening_message, build_morning_message
-from app.summary_service import Summarizer, create_summarizer, summarize_entries
+from app.periodic_summary import (
+    build_notification,
+    build_summary_input,
+    build_summary_markdown,
+    collect_stats,
+    due_periods,
+)
+from app.summary_service import (
+    MAX_PERIOD_SUMMARY_LENGTH,
+    PERIOD_SYSTEM_PROMPT,
+    Summarizer,
+    create_summarizer,
+    period_prompt_heading,
+    summarize_entries,
+)
 from app.weather_service import WeatherService
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
     R2Service,
     build_object_key,
+    describe_usage,
     validate_object_key,
 )
 
@@ -381,6 +396,7 @@ class LifelogClient(discord.Client):
         self._register_commands()
         self._notification_loops: list[tasks.Loop] = []
         self._healthcheck_loop: tasks.Loop | None = None
+        self._periodic_summary_loop: tasks.Loop | None = None
         self._web_server = None
         self._web_task: asyncio.Task | None = None
 
@@ -409,8 +425,81 @@ class LifelogClient(discord.Client):
                 "applications.commands スコープが含まれているか確認してください。"
             )
         self._start_notification_loops()
+        self._start_periodic_summary_loop()
         self._start_healthcheck_loop()
         self._start_web_server()
+
+    def _start_periodic_summary_loop(self) -> None:
+        at_time = self.config.periodic_summary_time
+        if not self.config.periodic_summary_enabled or at_time is None:
+            logger.info("週次・月次まとめは無効です（PERIODIC_SUMMARY_ENABLED=false）")
+            return
+        loop = tasks.loop(time=at_time)(self._run_due_periodic_summaries)
+        loop.start()
+        self._periodic_summary_loop = loop
+        logger.info(
+            "週次・月次まとめを %02d:%02d に確認します（月曜=週次 / 1日=月次）",
+            at_time.hour,
+            at_time.minute,
+        )
+
+    async def _run_due_periodic_summaries(self) -> None:
+        await self.wait_until_ready()
+        today = datetime.now(ZoneInfo(self.config.timezone)).date()
+        for period in due_periods(today):
+            try:
+                await self._generate_period_summary(period)
+            except Exception:
+                # One failed roll-up must not stop the other.
+                logger.exception("まとめの作成に失敗しました: %s", period.label)
+
+    async def _generate_period_summary(self, period) -> None:
+        entries_by_day = await asyncio.to_thread(
+            self.github_service.fetch_entries_in_range, period.start, period.end
+        )
+        stats = collect_stats(entries_by_day)
+
+        summary_text = await summarize_entries(
+            self.summarizer,
+            build_summary_input(entries_by_day, self.config.periodic_summary_max_input_chars),
+            PERIOD_SYSTEM_PROMPT,
+            MAX_PERIOD_SUMMARY_LENGTH,
+            period_prompt_heading(period.label),
+        )
+        usage = await self._storage_usage() if period.kind == "monthly" else None
+
+        markdown = build_summary_markdown(period, stats, summary_text, usage)
+        await asyncio.to_thread(
+            self.github_service.save_summary,
+            period.path,
+            markdown,
+            f"Add {period.kind} summary for {period.label}",
+        )
+        logger.info(
+            "まとめを保存しました: %s（%s日 / %s件）",
+            period.path,
+            stats.day_count,
+            stats.entry_count,
+        )
+
+        channel = await self._notification_channel()
+        if channel is not None:
+            url = (
+                f"https://github.com/{self.config.github_owner}/"
+                f"{self.config.github_repo}/blob/{self.config.github_branch}/{period.path}"
+            )
+            await channel.send(build_notification(period, stats, url))
+
+    async def _storage_usage(self) -> str | None:
+        """Bucket usage for the monthly roll-up; None if unavailable."""
+        if not self.config.report_storage_usage:
+            return None
+        try:
+            count, total = await asyncio.to_thread(self.r2_service.calculate_usage)
+        except Exception:
+            logger.exception("R2使用量の取得に失敗しました")
+            return None
+        return describe_usage(count, total)
 
     def _start_healthcheck_loop(self) -> None:
         """Ping an external monitor so a stalled bot is noticed.
@@ -507,6 +596,8 @@ class LifelogClient(discord.Client):
             loop.cancel()
         if self._healthcheck_loop is not None:
             self._healthcheck_loop.cancel()
+        if self._periodic_summary_loop is not None:
+            self._periodic_summary_loop.cancel()
         if self._web_server is not None:
             self._web_server.should_exit = True
         if self._web_task is not None:
@@ -698,8 +789,13 @@ class LifelogClient(discord.Client):
             raise AttachmentDownloadError(str(exc)) from exc
 
 
-def create_client(config: Config, github_service: GitHubService, r2_service: R2Service) -> LifelogClient:
+def create_client(
+    config: Config,
+    github_service: GitHubService,
+    r2_service: R2Service,
+    **overrides,
+) -> LifelogClient:
     intents = discord.Intents.default()
     intents.message_content = True
     intents.guilds = True
-    return LifelogClient(config, github_service, r2_service, intents=intents)
+    return LifelogClient(config, github_service, r2_service, intents=intents, **overrides)

@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.summary_service import (
+    DEFAULT_HEADING,
     MAX_SUMMARY_LENGTH,
+    SYSTEM_PROMPT,
     ClaudeSummarizer,
     OllamaSummarizer,
     Summarizer,
@@ -69,7 +71,7 @@ async def test_summarize_entries_swallows_failures():
     """A summary is a bonus — losing it must not cost the notification."""
 
     class Boom(Summarizer):
-        async def summarize(self, entries):
+        async def summarize(self, entries, *args, **kwargs):
             raise RuntimeError("model unavailable")
 
     assert await summarize_entries(Boom(), ["朝ラン5km"]) is None
@@ -78,7 +80,7 @@ async def test_summarize_entries_swallows_failures():
 @pytest.mark.asyncio
 async def test_summarize_entries_returns_summary():
     class Fake(Summarizer):
-        async def summarize(self, entries):
+        async def summarize(self, entries, *args, **kwargs):
             return "走って買い物をした一日。"
 
     assert await summarize_entries(Fake(), ["朝ラン5km"]) == "走って買い物をした一日。"
@@ -105,7 +107,9 @@ def test_claude_summarizer_sends_system_prompt_and_returns_text():
     fake_anthropic.Anthropic.return_value.messages.create.return_value = response
 
     with patch.dict("sys.modules", {"anthropic": fake_anthropic}):
-        result = summarizer._summarize_sync(["朝ラン5km"])
+        result = summarizer._summarize_sync(
+            ["朝ラン5km"], SYSTEM_PROMPT, MAX_SUMMARY_LENGTH, DEFAULT_HEADING
+        )
 
     assert result == "走って買い物をした一日。"
     kwargs = fake_anthropic.Anthropic.return_value.messages.create.call_args.kwargs
@@ -120,4 +124,9 @@ def test_claude_summarizer_returns_none_on_refusal():
     fake_anthropic.Anthropic.return_value.messages.create.return_value = response
 
     with patch.dict("sys.modules", {"anthropic": fake_anthropic}):
-        assert summarizer._summarize_sync(["朝ラン5km"]) is None
+        assert (
+            summarizer._summarize_sync(
+                ["朝ラン5km"], SYSTEM_PROMPT, MAX_SUMMARY_LENGTH, DEFAULT_HEADING
+            )
+            is None
+        )

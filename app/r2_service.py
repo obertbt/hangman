@@ -25,6 +25,8 @@ _UNSAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _DEFAULT_FILENAME = "file"
 
 OBJECT_KEY_PREFIX = "images/"
+# Cloudflare R2's Standard storage free allowance.
+FREE_TIER_BYTES = 10 * 1024**3
 # images/YYYY/MM/DD/<message-id>-<filename>
 _OBJECT_KEY_RE = re.compile(r"^images/\d{4}/\d{2}/\d{2}/[A-Za-z0-9._-]+$")
 
@@ -43,6 +45,26 @@ def build_object_key(dt: datetime, message_id: int, filename: str) -> str:
     """images/YYYY/MM/DD/<message-id>-<safe-filename>"""
     safe_name = sanitize_filename(filename)
     return f"images/{dt:%Y}/{dt:%m}/{dt:%d}/{message_id}-{safe_name}"
+
+
+def format_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    value = float(size)
+    for unit in ("KB", "MB", "GB"):
+        value /= 1024
+        if value < 1024 or unit == "GB":
+            return f"{value:.1f} {unit}"
+    return f"{value:.1f} GB"
+
+
+def describe_usage(object_count: int, total_bytes: int) -> str:
+    """`123件 / 456.7 MB（無料枠10GBの4.5%）` for notifications."""
+    percentage = total_bytes / FREE_TIER_BYTES * 100
+    return (
+        f"{object_count}件 / {format_bytes(total_bytes)}"
+        f"（無料枠{format_bytes(FREE_TIER_BYTES)}の{percentage:.1f}%）"
+    )
 
 
 def validate_object_key(key: str) -> str | None:
@@ -103,6 +125,21 @@ class R2Service:
                 return False
             raise
         return True
+
+    def calculate_usage(self) -> tuple[int, int]:
+        """(object count, total bytes) for the whole bucket.
+
+        R2 exposes no size metric through the S3 API, so this walks the
+        object listing. Paginated because a single response caps at 1000.
+        """
+        count = 0
+        total = 0
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket):
+            for item in page.get("Contents", []):
+                count += 1
+                total += item["Size"]
+        return count, total
 
     def generate_presigned_url(self, key: str, expires_in: int) -> str:
         """Issue a temporary read URL for a private object.
