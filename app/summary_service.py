@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import aiohttp
 
@@ -45,6 +46,9 @@ MAX_PERIOD_SUMMARY_LENGTH = 2000
 
 DEFAULT_HEADING = "以下は今日の記録です。"
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_UNCLOSED_THINK_RE = re.compile(r"<think>.*", re.DOTALL | re.IGNORECASE)
+
 
 def build_prompt(entries: list[str], heading: str = DEFAULT_HEADING) -> str:
     numbered = "\n".join(f"{i}. {entry}" for i, entry in enumerate(entries, start=1))
@@ -55,9 +59,22 @@ def period_prompt_heading(label: str) -> str:
     return f"以下は{label}の記録です（日付ごとにまとめてあります）。"
 
 
+def strip_reasoning(text: str) -> str:
+    """Drop a reasoning model's `<think>` block.
+
+    Models like qwen3 and deepseek-r1 think out loud before answering.
+    That text is not the answer, and leaving it in would bury a short
+    reply — a tag list especially — under a paragraph of deliberation.
+    """
+    without_blocks = _THINK_BLOCK_RE.sub("", text)
+    # An unterminated block means generation was cut off mid-thought:
+    # there is no answer after it, so drop the remainder too.
+    return _UNCLOSED_THINK_RE.sub("", without_blocks)
+
+
 def clean_summary(text: str, max_length: int = MAX_SUMMARY_LENGTH) -> str | None:
     """Trim the model's reply to something fit for a Discord message."""
-    summary = text.strip()
+    summary = strip_reasoning(text).strip()
     if not summary:
         return None
     if len(summary) > max_length:

@@ -12,6 +12,7 @@ from app.summary_service import (
     build_prompt,
     clean_summary,
     create_summarizer,
+    strip_reasoning,
     summarize_entries,
 )
 from tests.test_config import _make_config
@@ -166,3 +167,20 @@ async def test_ollama_summarizer_caps_generation_length():
         assert await summarizer.summarize(["朝ラン5km"], SYSTEM_PROMPT, 100, "見出し") == "運動"
 
     assert captured["options"]["num_predict"] == 100
+
+
+def test_strip_reasoning_removes_a_think_block():
+    assert strip_reasoning("<think>考え中</think>\n答え").strip() == "答え"
+
+
+def test_strip_reasoning_drops_an_unterminated_block():
+    """Generation cut off mid-thought leaves no answer behind it."""
+    assert strip_reasoning("前置き\n<think>まだ考えて").strip() == "前置き"
+
+
+def test_strip_reasoning_leaves_ordinary_text_alone():
+    assert strip_reasoning("走って買い物をした一日。") == "走って買い物をした一日。"
+
+
+def test_clean_summary_drops_reasoning_before_measuring_length():
+    assert clean_summary("<think>" + "考" * 900 + "</think>走った。") == "走った。"

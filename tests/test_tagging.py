@@ -5,12 +5,14 @@ import pytest
 from app.config import DEFAULT_TAG_VOCABULARY
 from app.summary_service import Summarizer
 from app.tagging import (
+    MAX_LOGGED_REPLY_LENGTH,
     MAX_TAGS,
     build_tag_system_prompt,
     format_tags,
     generate_tags,
     parse_tag_line,
     parse_tags,
+    summarize_reply_for_log,
 )
 
 VOCAB = DEFAULT_TAG_VOCABULARY
@@ -111,3 +113,33 @@ async def test_generate_tags_returns_nothing_without_a_vocabulary():
     summarizer = FakeSummarizer("運動")
     assert await generate_tags(summarizer, "朝ラン5km", (), 30) == []
     assert summarizer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_generate_tags_reads_past_a_reasoning_block():
+    """qwen3 and friends think out loud before answering."""
+    summarizer = FakeSummarizer("<think>朝ランは運動だ</think>\n運動 健康")
+    assert await generate_tags(summarizer, "朝ラン5km", VOCAB, 30) == ["運動", "健康"]
+
+
+@pytest.mark.asyncio
+async def test_generate_tags_logs_when_the_model_answers_nothing(caplog):
+    """A silent empty return is indistinguishable from tagging never running."""
+    summarizer = FakeSummarizer("")
+    with caplog.at_level("WARNING"):
+        assert await generate_tags(summarizer, "朝ラン5km", VOCAB, 30) == []
+    assert "OLLAMA_MODEL" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_generate_tags_logs_the_reply_when_no_tag_matches(caplog):
+    summarizer = FakeSummarizer("ホッケーとランニング")
+    with caplog.at_level("WARNING"):
+        assert await generate_tags(summarizer, "朝ラン5km", VOCAB, 30) == []
+    assert "ホッケーとランニング" in caplog.text
+
+
+def test_summarize_reply_for_log_flattens_and_truncates():
+    assert summarize_reply_for_log("運動\n健康") == "運動 健康"
+    assert summarize_reply_for_log(None) == "（空の回答）"
+    assert len(summarize_reply_for_log("あ" * 500)) == MAX_LOGGED_REPLY_LENGTH + 1

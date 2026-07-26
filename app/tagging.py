@@ -21,9 +21,11 @@ logger = logging.getLogger(__name__)
 
 MAX_TAGS = 3
 MAX_TAG_LENGTH = 20
-# The reply is a short list, not prose; anything longer is the model
-# ignoring the format, and the extra text is discarded by parse_tags.
-MAX_TAG_REPLY_LENGTH = 100
+# The answer is a short list, but a reasoning model spends hundreds of
+# tokens thinking before it gets there. Budget for that: cut generation
+# off mid-thought and the answer never arrives at all.
+MAX_TAG_REPLY_LENGTH = 600
+MAX_LOGGED_REPLY_LENGTH = 120
 
 TAG_HEADING = "以下の記録に当てはまるタグを選んでください。"
 
@@ -60,6 +62,20 @@ def parse_tags(text: str, vocabulary: tuple[str, ...]) -> list[str]:
         if len(found) >= MAX_TAGS:
             break
     return found
+
+
+def summarize_reply_for_log(reply: str | None) -> str:
+    """A short, single-line form of the model's reply, for diagnosis.
+
+    The reply is derived from a diary entry, so only enough to see what
+    shape the answer took is kept — never the whole thing.
+    """
+    if not reply:
+        return "（空の回答）"
+    flat = " ".join(reply.split())
+    if len(flat) > MAX_LOGGED_REPLY_LENGTH:
+        return flat[:MAX_LOGGED_REPLY_LENGTH] + "…"
+    return flat
 
 
 def format_tags(tags: list[str]) -> str:
@@ -106,4 +122,22 @@ async def generate_tags(
     except Exception:
         logger.exception("タグの生成に失敗しました")
         return []
-    return parse_tags(reply or "", vocabulary)
+
+    # Both branches below used to return silently, which is why a
+    # misbehaving model looked exactly like tagging never running.
+    tags = parse_tags(reply or "", vocabulary)
+    if tags:
+        return tags
+    if reply:
+        logger.warning(
+            "AIの回答にタグが見つかりませんでした（回答: %s）。"
+            "一覧にない言葉は採用しないため、タグ無しで保存します。",
+            summarize_reply_for_log(reply),
+        )
+    else:
+        logger.warning(
+            "AIがタグを返しませんでした。qwen3 のような思考モデルは、"
+            "考えている途中で出力の上限に達し、答えに辿り着かないことがあります。"
+            "OLLAMA_MODEL を qwen2.5:3b などに変更してください。"
+        )
+    return []
