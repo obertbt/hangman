@@ -7,7 +7,9 @@ from app.models import IssueSummary
 from app.web_app import create_app, shift_month
 from app.web_auth import MAX_FAILED_ATTEMPTS, SessionStore
 from tests.test_config import _make_config
+from app.search_index import SearchIndex
 from tests.test_diary import MARKDOWN
+from tests.test_search_index import MARKDOWN as MARKDOWN_WITH_TAGS
 
 PASSWORD = "correct-horse-battery"
 
@@ -163,3 +165,77 @@ def test_session_rejects_unknown_token():
     store = SessionStore(session_seconds=60)
     assert store.is_valid("not-a-real-token") is False
     assert store.is_valid(None) is False
+
+
+@pytest.fixture
+def search_client(services):
+    github, r2 = services
+    index = SearchIndex(":memory:")
+    index.index_markdown("2026-07-26", MARKDOWN_WITH_TAGS)
+    config = _make_config(web_enabled=True, web_password=PASSWORD, search_enabled=True)
+    client = TestClient(
+        create_app(config, github, r2, search_index=index), follow_redirects=False
+    )
+    yield client
+    index.close()
+
+
+def test_search_requires_login(search_client):
+    response = search_client.get("/search")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_search_without_a_query_prompts_for_one(search_client):
+    _login(search_client)
+    response = search_client.get("/search")
+    assert response.status_code == 200
+    assert "キーワードを入力する" in response.text
+
+
+def test_search_lists_matching_entries(search_client):
+    _login(search_client)
+    response = search_client.get("/search", params={"q": "ラン"})
+    assert response.status_code == 200
+    assert "/day/2026-07-26" in response.text
+    assert "朝ラン5km" in response.text
+
+
+def test_search_reports_no_matches(search_client):
+    _login(search_client)
+    response = search_client.get("/search", params={"q": "存在しない語"})
+    assert "一致する記録はありませんでした" in response.text
+
+
+def test_search_filters_by_tag(search_client):
+    _login(search_client)
+    response = search_client.get("/search", params={"tag": "買い物"})
+    assert "スーパーで買い物" in response.text
+    assert "朝ラン5km" not in response.text
+
+
+def test_search_offers_the_known_tags(search_client):
+    _login(search_client)
+    response = search_client.get("/search")
+    assert "#運動" in response.text
+    assert "#買い物" in response.text
+
+
+def test_search_page_explains_when_the_index_is_disabled(client):
+    _login(client)
+    response = client.get("/search", params={"q": "ラン"})
+    assert response.status_code == 200
+    assert "SEARCH_ENABLED" in response.text
+
+
+def test_day_page_shows_tags(services):
+    github, r2 = services
+    github.fetch_daily_markdown.return_value = MARKDOWN_WITH_TAGS
+    config = _make_config(web_enabled=True, web_password=PASSWORD)
+    client = TestClient(create_app(config, github, r2), follow_redirects=False)
+    _login(client)
+
+    response = client.get("/day/2026-07-26")
+
+    assert "#運動" in response.text
+    assert 'href="/search?tag=運動"' in response.text

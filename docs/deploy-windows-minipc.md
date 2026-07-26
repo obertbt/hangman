@@ -308,6 +308,18 @@ pip install -r requirements.txt
 
 そのあとタスクスケジューラで「終了」→「実行する」で再起動します。
 
+### 検索インデックスを作り直したいとき
+
+GitHub上で日記を直接編集したときや、`TAG_VOCABULARY` を変えたときに実行します（`SEARCH_ENABLED=true` の場合のみ）。Botを止めずに実行して構いません。
+
+```powershell
+cd $HOME\Documents\hangman
+.venv\Scripts\activate
+python -m app.reindex
+```
+
+インデックスは `data\search.db` に置かれます。消しても日記は失われません（次回起動時に自動で作り直されます）。
+
 ---
 
 ## 6. Windows Updateへの対処

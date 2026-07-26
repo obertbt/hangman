@@ -7,8 +7,15 @@ services:
     # Restarts on crash and after a server reboot, but stays down when
     # stopped on purpose with `docker compose stop`.
     restart: unless-stopped
+    volumes:
+      # Keeps the search index across restarts. Deleting it is safe: the
+      # bot rebuilds it from GitHub on the next start.
+      - search-index:/app/data
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  search-index:

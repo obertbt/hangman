@@ -10,6 +10,11 @@
   {% for entry in entries %}
   <article class="card">
     <div class="time">{{ entry.time_str }}</div>
+    {% if entry.tags %}
+    <div class="tags">
+      {% for name in entry.tags %}<a class="tag" href="/search?tag={{ name }}">#{{ name }}</a>{% endfor %}
+    </div>
+    {% endif %}
     {% if entry.body %}<p class="body">{{ entry.body }}</p>{% endif %}
     {% if entry.image_urls %}
     <div class="shots">

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
@@ -49,6 +49,15 @@ from app.summary_service import (
     period_prompt_heading,
     summarize_entries,
 )
+from app.search_index import (
+    MAX_RESULTS,
+    IndexedEntry,
+    SearchHit,
+    SearchIndex,
+    build_snippet,
+    split_terms,
+)
+from app.tagging import generate_tags
 from app.weather_service import WeatherService
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
@@ -65,6 +74,9 @@ STAGE_GITHUB_SAVE = "GitHub保存"
 STAGE_GITHUB_ISSUE = "GitHub Issue作成"
 
 TASK_COMMAND_PREFIX = "!task"
+
+# Discord rejects messages over 2000 characters; leave room for the tail note.
+MAX_SEARCH_REPLY_LENGTH = 1800
 
 # (data, content_type)
 Downloader = Callable[[str, int], Awaitable[bytes]]
@@ -230,6 +242,8 @@ async def process_message(
     r2_service: R2Service,
     downloader: Downloader,
     weather_service: WeatherService | None = None,
+    summarizer: Summarizer | None = None,
+    search_index: SearchIndex | None = None,
 ) -> ProcessResult | None:
     """Core orchestration, independent of discord.py.
 
@@ -270,6 +284,13 @@ async def process_message(
     # Best effort: a weather lookup must never block saving the entry.
     weather = await weather_service.current_weather() if weather_service else None
 
+    # Same for tags — generate_tags swallows its own failures and returns [].
+    tags: list[str] = []
+    if config.tagging_enabled and summarizer is not None:
+        tags = await generate_tags(
+            summarizer, msg.content, config.tag_vocabulary, config.tagging_timeout_seconds
+        )
+
     entry = MarkdownEntryData(
         time_str=f"{jst_dt:%H:%M}",
         content=msg.content,
@@ -279,6 +300,7 @@ async def process_message(
         iso_datetime=jst_dt.isoformat(),
         r2_keys=uploaded_keys,
         weather=weather,
+        tags=tags,
     )
 
     try:
@@ -291,6 +313,25 @@ async def process_message(
         logger.exception("GitHubへの保存中に想定外のエラーが発生しました: message_id=%s", msg.message_id)
         r2_service.delete_objects(uploaded_keys)
         return ProcessResult(False, build_failure_reply(STAGE_GITHUB_SAVE))
+
+    # The index is a cache of what GitHub already holds, so a failure here
+    # costs a search hit until the next rebuild — never the saved entry.
+    if search_index is not None:
+        try:
+            await asyncio.to_thread(
+                search_index.index_entry,
+                IndexedEntry(
+                    date_str=f"{jst_dt:%Y-%m-%d}",
+                    time_str=entry.time_str,
+                    body=msg.content,
+                    author=msg.author_display_name,
+                    tags=tags,
+                    image_count=len(uploaded_keys),
+                    message_id=str(msg.message_id),
+                ),
+            )
+        except Exception:
+            logger.exception("検索インデックスの更新に失敗しました: message_id=%s", msg.message_id)
 
     return ProcessResult(True, build_success_reply(len(uploaded_keys)))
 
@@ -364,6 +405,62 @@ def notification_channel_id(config: Config) -> int:
     return config.discord_daily_channel_id
 
 
+def open_search_index(config: Config) -> SearchIndex | None:
+    """The search index, or None when disabled or unusable.
+
+    A broken index file must not stop the bot from saving diary entries,
+    so the failure is logged and search simply stays off.
+    """
+    if not config.search_enabled:
+        return None
+    try:
+        return SearchIndex(config.search_index_path)
+    except Exception:
+        logger.exception(
+            "検索インデックスを開けませんでした: %s（検索機能は無効になります）",
+            config.search_index_path,
+        )
+        return None
+
+
+def build_search_reply(query: str, tag: str | None, hits: list[SearchHit]) -> str:
+    """The /search reply: a snippet per hit, newest first.
+
+    Trimmed to fit one Discord message; the rest is reported as a count
+    rather than silently dropped.
+    """
+    conditions = []
+    if query:
+        conditions.append(f"「{query}」")
+    if tag:
+        conditions.append(f"タグ #{tag}")
+    label = " / ".join(conditions) if conditions else "（条件なし）"
+
+    if not hits:
+        return f"🔍 {label} に一致する記録はありませんでした。"
+
+    terms = split_terms(query)
+    header = f"🔍 {label}: {len(hits)}件"
+    lines = [header]
+    used = len(header)
+    shown = 0
+    for hit in hits:
+        tag_text = " " + " ".join(f"#{t}" for t in hit.tags) if hit.tags else ""
+        image_text = f" 📷{hit.image_count}" if hit.image_count else ""
+        block = (
+            f"\n**{hit.date_str} {hit.time_str}**{tag_text}{image_text}\n"
+            f"{build_snippet(hit.body, terms)}"
+        )
+        if used + len(block) > MAX_SEARCH_REPLY_LENGTH:
+            break
+        lines.append(block)
+        used += len(block) + 1
+        shown += 1
+    if shown < len(hits):
+        lines.append(f"\n…ほか{len(hits) - shown}件（キーワードを足すと絞り込めます）")
+    return "\n".join(lines)
+
+
 def build_image_url_reply(key: str, expiry_seconds: int, url: str) -> str:
     minutes = max(1, round(expiry_seconds / 60))
     return (
@@ -381,6 +478,7 @@ class LifelogClient(discord.Client):
         r2_service: R2Service,
         summarizer: Summarizer | None = None,
         weather_service: WeatherService | None = None,
+        search_index: SearchIndex | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -391,6 +489,7 @@ class LifelogClient(discord.Client):
         self.weather_service = (
             weather_service if weather_service is not None else WeatherService(config)
         )
+        self.search_index = search_index if search_index is not None else open_search_index(config)
         self._http_session: aiohttp.ClientSession | None = None
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
@@ -399,6 +498,7 @@ class LifelogClient(discord.Client):
         self._periodic_summary_loop: tasks.Loop | None = None
         self._web_server = None
         self._web_task: asyncio.Task | None = None
+        self._backfill_task: asyncio.Task | None = None
 
     def _register_commands(self) -> None:
         guild = discord.Object(id=self.config.discord_guild_id)
@@ -414,6 +514,20 @@ class LifelogClient(discord.Client):
         async def image_command(interaction: discord.Interaction, key: str) -> None:
             await self._handle_image_command(interaction, key)
 
+        @self.tree.command(
+            name="search",
+            description="日記を検索します（自分にだけ表示されます）",
+            guild=guild,
+        )
+        @discord.app_commands.describe(
+            query="検索したいキーワード（スペース区切りですべて含む記録を探します）",
+            tag="タグで絞り込む場合に指定します（例: 運動）",
+        )
+        async def search_command(
+            interaction: discord.Interaction, query: str = "", tag: str = ""
+        ) -> None:
+            await self._handle_search_command(interaction, query, tag)
+
     async def setup_hook(self) -> None:
         self._http_session = aiohttp.ClientSession()
         guild = discord.Object(id=self.config.discord_guild_id)
@@ -427,7 +541,45 @@ class LifelogClient(discord.Client):
         self._start_notification_loops()
         self._start_periodic_summary_loop()
         self._start_healthcheck_loop()
+        self._start_search_backfill()
         self._start_web_server()
+
+    def _start_search_backfill(self) -> None:
+        """Fill an empty index from GitHub, once, in the background.
+
+        Without this, search would only ever find entries written after
+        the feature was switched on. It runs off the startup path so a
+        slow backfill never delays the bot coming online.
+        """
+        if self.search_index is None:
+            logger.info("日記の検索は無効です（SEARCH_ENABLED=false）")
+            return
+        try:
+            existing = self.search_index.count()
+        except Exception:
+            logger.exception("検索インデックスの状態を確認できませんでした")
+            return
+        if existing:
+            logger.info("日記の検索を有効にしました（インデックス済み: %s件）", existing)
+            return
+
+        async def backfill() -> None:
+            index = self.search_index
+            assert index is not None
+            today = datetime.now(ZoneInfo(self.config.timezone)).date()
+            start = today - timedelta(days=self.config.search_backfill_days)
+            logger.info("検索インデックスの初回作成を開始します（%s 以降）", start)
+            try:
+                days = await asyncio.to_thread(
+                    self.github_service.fetch_entries_in_range, start, today
+                )
+                total = await asyncio.to_thread(index.rebuild, days)
+            except Exception:
+                logger.exception("検索インデックスの初回作成に失敗しました")
+                return
+            logger.info("検索インデックスを作成しました: %s日分 / %s件", len(days), total)
+
+        self._backfill_task = asyncio.create_task(backfill())
 
     def _start_periodic_summary_loop(self) -> None:
         at_time = self.config.periodic_summary_time
@@ -544,7 +696,12 @@ class LifelogClient(discord.Client):
 
         server = uvicorn.Server(
             uvicorn.Config(
-                create_app(self.config, self.github_service, self.r2_service),
+                create_app(
+                    self.config,
+                    self.github_service,
+                    self.r2_service,
+                    search_index=self.search_index,
+                ),
                 host=self.config.web_host,
                 port=self.config.web_port,
                 log_level="warning",
@@ -602,6 +759,10 @@ class LifelogClient(discord.Client):
             self._web_server.should_exit = True
         if self._web_task is not None:
             self._web_task.cancel()
+        if self._backfill_task is not None:
+            self._backfill_task.cancel()
+        if self.search_index is not None:
+            self.search_index.close()
         if self._http_session is not None:
             await self._http_session.close()
         await super().close()
@@ -713,6 +874,8 @@ class LifelogClient(discord.Client):
                     self.r2_service,
                     self._download_attachment,
                     self.weather_service,
+                    self.summarizer,
+                    self.search_index,
                 )
         except Exception:
             logger.exception("メッセージ処理中に想定外のエラーが発生しました: message_id=%s", message.id)
@@ -766,6 +929,46 @@ class LifelogClient(discord.Client):
         await interaction.followup.send(
             build_image_url_reply(key, self.config.signed_url_expiry_seconds, url),
             ephemeral=True,
+        )
+
+    async def _handle_search_command(
+        self, interaction: discord.Interaction, query: str, tag: str
+    ) -> None:
+        # Results quote the diary itself, so every response stays ephemeral.
+        if not is_user_allowed(self.config, interaction.user.id):
+            await interaction.response.send_message(
+                "❌ このコマンドを使用する権限がありません。", ephemeral=True
+            )
+            return
+        if self.search_index is None:
+            await interaction.response.send_message(
+                "❌ 検索は無効です（.env の SEARCH_ENABLED=true で有効になります）。",
+                ephemeral=True,
+            )
+            return
+
+        query, tag = query.strip(), tag.strip().lstrip("#＃").strip()
+        if not query and not tag:
+            await interaction.response.send_message(
+                "⚠️ キーワードかタグのどちらかを指定してください。", ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            hits = await asyncio.to_thread(
+                self.search_index.search, query, tag or None, MAX_RESULTS
+            )
+        except Exception:
+            logger.exception("検索に失敗しました")
+            await interaction.followup.send(
+                "❌ 検索に失敗しました。ログを確認してください。", ephemeral=True
+            )
+            return
+
+        logger.info("検索しました: user=%s 件数=%s", interaction.user.id, len(hits))
+        await interaction.followup.send(
+            build_search_reply(query, tag or None, hits), ephemeral=True
         )
 
     async def _download_attachment(self, url: str, max_bytes: int) -> bytes:

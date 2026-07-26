@@ -78,3 +78,41 @@ def test_entry_bodies_drops_entries_without_text():
 def test_body_list_markers_are_not_mistaken_for_metadata():
     markdown = "## 09:00\n\n買い物:\n- 牛乳\n- 卵\n\n- Discord投稿者: tomoya\n"
     assert parse_daily_markdown(markdown)[0].body == "買い物:\n- 牛乳\n- 卵"
+
+
+def test_parse_reads_message_id():
+    assert parse_daily_markdown(MARKDOWN)[0].message_id == "1"
+
+
+def test_parse_reads_tags():
+    markdown = (
+        "## 09:00\n\n朝ラン5km\n\n"
+        "- Discord投稿者: tomoya\n"
+        "- DiscordメッセージID: 5\n"
+        "- タグ: #運動 #健康\n"
+    )
+    assert parse_daily_markdown(markdown)[0].tags == ["運動", "健康"]
+
+
+def test_tags_are_not_part_of_the_body():
+    markdown = "## 09:00\n\n朝ラン5km\n\n- Discord投稿者: tomoya\n- タグ: #運動\n"
+    entry = parse_daily_markdown(markdown)[0]
+    assert entry.body == "朝ラン5km"
+    assert entry.tags == ["運動"]
+
+
+def test_untagged_entries_have_no_tags():
+    assert parse_daily_markdown(MARKDOWN)[0].tags == []
+
+
+def test_tags_do_not_break_attachment_parsing():
+    markdown = (
+        "## 09:00\n\n本文\n\n"
+        "- Discord投稿者: tomoya\n"
+        "- タグ: #運動\n"
+        "- 添付ファイル:\n"
+        "  - `images/2026/07/26/1-a.png`\n"
+    )
+    entry = parse_daily_markdown(markdown)[0]
+    assert entry.tags == ["運動"]
+    assert entry.image_keys == ["images/2026/07/26/1-a.png"]

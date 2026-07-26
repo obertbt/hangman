@@ -18,6 +18,7 @@ from app.github_service import (
     count_entry_headings,
     extract_entry_bodies,
 )
+from app.diary import parse_daily_markdown
 from app.models import MarkdownEntryData, TaskData
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -438,3 +439,21 @@ def test_save_summary_raises_friendly_error_on_github_failure():
 
     with pytest.raises(GitHubSaveError):
         service.save_summary("summary/2026-07.md", "# 2026年7月", "Add monthly summary")
+
+
+def test_build_entry_markdown_with_tags():
+    md = build_entry_markdown(_make_entry(tags=["運動", "健康"]))
+    assert "- タグ: #運動 #健康" in md
+
+
+def test_build_entry_markdown_omits_the_tag_line_when_untagged():
+    assert "- タグ:" not in build_entry_markdown(_make_entry())
+
+
+def test_tags_round_trip_through_the_parser():
+    """What github_service writes, diary.py must be able to read back."""
+    md = build_entry_markdown(_make_entry(tags=["運動"], r2_keys=["images/2026/07/19/1-a.png"]))
+    entry = parse_daily_markdown(md)[0]
+    assert entry.tags == ["運動"]
+    assert entry.body == "今日はホッケーの練習。"
+    assert entry.image_keys == ["images/2026/07/19/1-a.png"]

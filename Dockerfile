@@ -12,7 +12,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 
-RUN useradd --create-home --uid 1000 appuser
+# The search index lives here. It is a rebuildable cache, but keeping it
+# on a volume saves re-reading every diary file from GitHub on restart.
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app/data
 USER appuser
 
 CMD ["python", "-m", "app.main"]

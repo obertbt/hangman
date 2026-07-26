@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="search" method="get" action="/search">
+  <input type="search" name="q" value="{{ query }}" placeholder="キーワード（スペース区切りで絞り込み）" autofocus>
+  <input type="hidden" name="tag" value="{{ tag }}">
+  <button type="submit" class="primary">検索</button>
+</form>
+
+{% if tag %}
+<p class="muted">タグ <strong>#{{ tag }}</strong> で絞り込み中 — <a href="/search?q={{ query }}">解除</a></p>
+{% endif %}
+
+{% if tags %}
+<div class="tags">
+  {% for name, count in tags %}
+  <a class="tag" href="/search?q={{ query }}&amp;tag={{ name }}">#{{ name }} <span class="muted">{{ count }}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if error %}
+<p class="empty">{{ error }}</p>
+{% elif results %}
+<p class="muted">{{ results | length }}件</p>
+{% for hit in results %}
+<article class="card">
+  <a href="/day/{{ hit.date_str }}"><span class="time">{{ hit.date_str }} {{ hit.time_str }}</span></a>
+  {% if hit.image_count %}<span class="muted">📷 {{ hit.image_count }}</span>{% endif %}
+  {% if hit.tags %}
+  <div class="tags">
+    {% for name in hit.tags %}<a class="tag" href="/search?tag={{ name }}">#{{ name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  <p class="body">{{ hit.snippet }}</p>
+</article>
+{% endfor %}
+{% elif searched %}
+<p class="empty">一致する記録はありませんでした。</p>
+{% else %}
+<p class="empty">キーワードを入力するか、タグを選んでください。</p>
+{% endif %}
+{% endblock %}

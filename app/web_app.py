@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -22,6 +22,7 @@ from app.config import Config
 from app.diary import parse_daily_markdown
 from app.github_service import GitHubService
 from app.r2_service import R2Service, validate_object_key
+from app.search_index import MAX_RESULTS, SearchIndex, build_snippet, split_terms
 from app.web_auth import SESSION_COOKIE, SessionStore
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,18 @@ class DayEntry:
     time_str: str
     body: str
     image_urls: list[str]
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SearchResult:
+    """One search hit as the page shows it."""
+
+    date_str: str
+    time_str: str
+    snippet: str
+    tags: list[str]
+    image_count: int
 
 
 def month_label(year: int, month: int) -> str:
@@ -54,6 +67,7 @@ def create_app(
     r2_service: R2Service,
     *,
     session_store: SessionStore | None = None,
+    search_index: SearchIndex | None = None,
 ) -> FastAPI:
     app = FastAPI(title="hearth-life", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -165,6 +179,7 @@ def create_app(
                 time_str=entry.time_str,
                 body=entry.body,
                 image_urls=await _sign_keys(entry.image_keys),
+                tags=list(entry.tags),
             )
             for entry in (parse_daily_markdown(markdown) if markdown else [])
         ]
@@ -200,6 +215,54 @@ def create_app(
             except Exception:
                 logger.exception("画像URLの発行に失敗しました: key=%s", key)
         return urls
+
+    @app.get("/search", response_class=HTMLResponse)
+    async def search_view(request: Request, q: str = "", tag: str = ""):
+        if not authed(request):
+            return login_redirect()
+
+        query, tag = q.strip(), tag.strip().lstrip("#＃").strip()
+        results: list[SearchResult] = []
+        tags: list[tuple[str, int]] = []
+        error: str | None = None
+
+        if search_index is None:
+            error = "検索は無効です（.env の SEARCH_ENABLED=true で有効になります）。"
+        else:
+            try:
+                tags = await asyncio.to_thread(search_index.tag_counts)
+                if query or tag:
+                    terms = split_terms(query)
+                    hits = await asyncio.to_thread(
+                        search_index.search, query, tag or None, MAX_RESULTS
+                    )
+                    results = [
+                        SearchResult(
+                            date_str=hit.date_str,
+                            time_str=hit.time_str,
+                            snippet=build_snippet(hit.body, terms),
+                            tags=hit.tags,
+                            image_count=hit.image_count,
+                        )
+                        for hit in hits
+                    ]
+            except Exception:
+                logger.exception("検索に失敗しました")
+                error = "検索に失敗しました。"
+
+        return templates.TemplateResponse(
+            request,
+            "search.html",
+            {
+                "title": "検索",
+                "query": query,
+                "tag": tag,
+                "results": results,
+                "tags": tags,
+                "error": error,
+                "searched": bool(query or tag),
+            },
+        )
 
     @app.get("/tasks", response_class=HTMLResponse)
     async def tasks_view(request: Request):

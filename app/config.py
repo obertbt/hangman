@@ -25,6 +25,22 @@ REQUIRED_KEYS = [
 ]
 
 
+DEFAULT_TAG_VOCABULARY = (
+    "運動",
+    "仕事",
+    "家族",
+    "食事",
+    "買い物",
+    "健康",
+    "趣味",
+    "学び",
+    "移動",
+    "家事",
+)
+
+MAX_TAG_LENGTH = 20
+
+
 class ConfigError(Exception):
     """Raised when required configuration is missing or invalid."""
 
@@ -64,6 +80,14 @@ class Config:
     periodic_summary_time: time_of_day | None
     periodic_summary_max_input_chars: int
     report_storage_usage: bool
+
+    tagging_enabled: bool
+    tag_vocabulary: tuple[str, ...]
+    tagging_timeout_seconds: int
+
+    search_enabled: bool
+    search_index_path: str
+    search_backfill_days: int
 
     healthcheck_url: str | None
     healthcheck_interval_minutes: int
@@ -154,6 +178,36 @@ def parse_time_of_day(raw: str | None, key: str, tzinfo) -> time_of_day | None:
             f"環境変数 {key} の時刻が範囲外です（00:00〜23:59で指定してください。値: {raw!r}）"
         )
     return time_of_day(hour=hour, minute=minute, tzinfo=tzinfo)
+
+
+def _parse_tag_vocabulary(raw: str | None) -> tuple[str, ...]:
+    """Comma-separated tag names. Empty falls back to the built-in list.
+
+    Tags are matched as whole words and written into the Markdown after a
+    `#`, so anything containing whitespace could not round-trip.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return DEFAULT_TAG_VOCABULARY
+    tags: list[str] = []
+    for part in raw.split(","):
+        tag = part.strip().lstrip("#＃").strip()
+        if not tag:
+            continue
+        if len(tag.split()) > 1:
+            raise ConfigError(
+                f"環境変数 TAG_VOCABULARY のタグに空白は使えません（値: {tag!r}）"
+            )
+        if len(tag) > MAX_TAG_LENGTH:
+            raise ConfigError(
+                f"環境変数 TAG_VOCABULARY のタグは{MAX_TAG_LENGTH}文字以内にしてください"
+                f"（値: {tag!r}）"
+            )
+        if tag not in tags:
+            tags.append(tag)
+    if not tags:
+        raise ConfigError("環境変数 TAG_VOCABULARY に有効なタグがありません")
+    return tuple(tags)
 
 
 def _parse_allowed_user_ids(raw: str | None) -> frozenset[int]:
@@ -276,6 +330,13 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             "SUMMARY_PROVIDER=claude を使うには ANTHROPIC_API_KEY の設定が必要です"
         )
 
+    tagging_enabled = _parse_bool(env.get("TAGGING_ENABLED"), False)
+    if tagging_enabled and summary_provider == "none":
+        raise ConfigError(
+            "TAGGING_ENABLED=true を使うには SUMMARY_PROVIDER の設定が必要です"
+            "（タグはAIが付けるため、none のままでは何も付きません）"
+        )
+
     return Config(
         discord_bot_token=env["DISCORD_BOT_TOKEN"],
         discord_guild_id=_parse_int(env, "DISCORD_GUILD_ID"),
@@ -308,6 +369,12 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             env, "PERIODIC_SUMMARY_MAX_INPUT_CHARS", 12000
         ),
         report_storage_usage=_parse_bool(env.get("REPORT_STORAGE_USAGE"), True),
+        tagging_enabled=tagging_enabled,
+        tag_vocabulary=_parse_tag_vocabulary(env.get("TAG_VOCABULARY")),
+        tagging_timeout_seconds=_parse_positive_int(env, "TAGGING_TIMEOUT_SECONDS", 30),
+        search_enabled=_parse_bool(env.get("SEARCH_ENABLED"), False),
+        search_index_path=env.get("SEARCH_INDEX_PATH", "").strip() or "data/search.db",
+        search_backfill_days=_parse_positive_int(env, "SEARCH_BACKFILL_DAYS", 730),
         healthcheck_url=env.get("HEALTHCHECK_URL", "").strip() or None,
         healthcheck_interval_minutes=_parse_positive_int(
             env, "HEALTHCHECK_INTERVAL_MINUTES", 60

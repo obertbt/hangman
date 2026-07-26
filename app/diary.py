@@ -9,11 +9,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.tagging import parse_tag_line
+
 ENTRY_HEADING_RE = re.compile(r"^## (\d{2}:\d{2})\s*$")
 METADATA_PREFIX = "- Discord投稿者:"
 ATTACHMENT_HEADING = "- 添付ファイル:"
 _ATTACHMENT_KEY_RE = re.compile(r"^\s*-\s*`(?P<key>[^`]+)`\s*$")
 _AUTHOR_RE = re.compile(r"^- Discord投稿者:\s*(?P<author>.+?)\s*$")
+_MESSAGE_ID_RE = re.compile(r"^- DiscordメッセージID:\s*(?P<message_id>\d+)\s*$")
+_TAGS_RE = re.compile(r"^- タグ:\s*(?P<tags>.+?)\s*$")
 
 
 @dataclass
@@ -22,6 +26,8 @@ class ParsedEntry:
     body: str
     author: str = ""
     image_keys: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    message_id: str = ""
 
 
 def parse_daily_markdown(markdown: str) -> list[ParsedEntry]:
@@ -57,6 +63,14 @@ def parse_daily_markdown(markdown: str) -> list[ParsedEntry]:
             continue
 
         if in_metadata:
+            tags = _TAGS_RE.match(line)
+            if tags:
+                current.tags = parse_tag_line(tags.group("tags"))
+                continue
+            message_id = _MESSAGE_ID_RE.match(line)
+            if message_id:
+                current.message_id = message_id.group("message_id")
+                continue
             key = _ATTACHMENT_KEY_RE.match(line)
             if key and line.startswith("  "):
                 current.image_keys.append(key.group("key"))

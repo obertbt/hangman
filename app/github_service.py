@@ -11,6 +11,7 @@ from app.config import Config
 from app.diary import entry_bodies
 from app.models import CreatedIssue, IssueSummary, MarkdownEntryData, TaskData
 from app.periodic_summary import months_between
+from app.tagging import format_tags
 
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
@@ -59,6 +60,8 @@ def build_entry_markdown(entry: MarkdownEntryData) -> str:
     ]
     # Must stay inside the metadata block (after 投稿者) so the parser
     # does not mistake it for diary text.
+    if entry.tags:
+        lines.append(f"- タグ: {format_tags(entry.tags)}")
     if entry.weather:
         lines.append(f"- 天気: {entry.weather}")
     if entry.r2_keys:

@@ -52,6 +52,22 @@
     padding: 0; cursor: pointer; text-decoration: underline;
   }
   .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
+  form.search { display: flex; gap: .5rem; margin-bottom: 1rem; }
+  form.search input[type="search"] {
+    font: inherit; flex: 1; min-width: 0; padding: .6rem .75rem;
+    background: var(--card); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  button.primary {
+    padding: .6rem 1rem; border-radius: 8px; text-decoration: none;
+    border: 1px solid var(--line); background: var(--card); white-space: nowrap;
+  }
+  .tags { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+  .tag {
+    display: inline-block; padding: .15rem .6rem; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card);
+    font-size: .85rem; text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -60,6 +76,7 @@
     <h1>{{ title }}</h1>
     <nav>
       <a href="/">日記</a>
+      <a href="/search">検索</a>
       <a href="/tasks">タスク</a>
       <form class="inline" method="post" action="/logout"><button type="submit">ログアウト</button></form>
     </nav>

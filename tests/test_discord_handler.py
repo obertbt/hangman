@@ -4,11 +4,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.config import Config
+from app.config import DEFAULT_TAG_VOCABULARY, Config
 from app.discord_handler import (
     AttachmentDownloadError,
     build_failure_reply,
     build_image_url_reply,
+    build_search_reply,
     build_success_reply,
     describe_rejection,
     filter_image_attachments,
@@ -17,6 +18,7 @@ from app.discord_handler import (
     is_task_command,
     is_task_message,
     notification_channel_id,
+    open_search_index,
     parse_task_text,
     process_message,
     process_task_command,
@@ -26,6 +28,7 @@ from app.discord_handler import (
 )
 from app.github_service import GitHubIssueError, GitHubSaveError
 from app.models import IncomingAttachment, IncomingMessage
+from app.search_index import SearchHit, SearchIndex
 
 UTC = ZoneInfo("UTC")
 
@@ -59,6 +62,12 @@ def _make_config(**overrides) -> Config:
         periodic_summary_time=None,
         periodic_summary_max_input_chars=12000,
         report_storage_usage=True,
+        tagging_enabled=False,
+        tag_vocabulary=DEFAULT_TAG_VOCABULARY,
+        tagging_timeout_seconds=30,
+        search_enabled=False,
+        search_index_path="data/search.db",
+        search_backfill_days=730,
         healthcheck_url=None,
         healthcheck_interval_minutes=60,
         weather_latitude=None,
@@ -554,3 +563,153 @@ async def test_process_message_saves_without_weather_when_lookup_fails():
 
     assert result.success is True
     assert github_service.save_entry.call_args[0][1].weather is None
+
+
+class _FakeTagger:
+    """Stands in for a summarizer, which is what produces tags."""
+
+    def __init__(self, reply="運動 健康"):
+        self.reply = reply
+
+    async def summarize(self, entries, *args, **kwargs):
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
+async def _downloader(url, max_bytes):
+    return b"data"
+
+
+@pytest.mark.asyncio
+async def test_process_message_tags_the_entry_when_enabled():
+    config = _make_config(tagging_enabled=True)
+    github_service = MagicMock()
+
+    result = await process_message(
+        _make_message(), config, github_service, MagicMock(), _downloader, None, _FakeTagger()
+    )
+
+    assert result.success is True
+    assert github_service.save_entry.call_args[0][1].tags == ["運動", "健康"]
+
+
+@pytest.mark.asyncio
+async def test_process_message_skips_tagging_when_disabled():
+    config = _make_config(tagging_enabled=False)
+    github_service = MagicMock()
+
+    await process_message(
+        _make_message(), config, github_service, MagicMock(), _downloader, None, _FakeTagger()
+    )
+
+    assert github_service.save_entry.call_args[0][1].tags == []
+
+
+@pytest.mark.asyncio
+async def test_process_message_saves_untagged_when_the_model_fails():
+    """Tagging is a bonus — a model outage must not cost the entry."""
+    config = _make_config(tagging_enabled=True)
+    github_service = MagicMock()
+
+    result = await process_message(
+        _make_message(),
+        config,
+        github_service,
+        MagicMock(),
+        _downloader,
+        None,
+        _FakeTagger(RuntimeError("model down")),
+    )
+
+    assert result.success is True
+    assert github_service.save_entry.call_args[0][1].tags == []
+
+
+@pytest.mark.asyncio
+async def test_process_message_indexes_the_saved_entry():
+    config = _make_config()
+    index = SearchIndex(":memory:")
+    try:
+        result = await process_message(
+            _make_message(),
+            config,
+            MagicMock(),
+            MagicMock(),
+            _downloader,
+            None,
+            None,
+            index,
+        )
+        assert result.success is True
+        hits = index.search("ホッケー")
+        assert [(hit.date_str, hit.time_str) for hit in hits] == [("2026-07-19", "21:35")]
+    finally:
+        index.close()
+
+
+@pytest.mark.asyncio
+async def test_process_message_does_not_index_a_failed_save():
+    config = _make_config()
+    github_service = MagicMock()
+    github_service.save_entry.side_effect = GitHubSaveError("boom")
+    index = SearchIndex(":memory:")
+    try:
+        result = await process_message(
+            _make_message(), config, github_service, MagicMock(), _downloader, None, None, index
+        )
+        assert result.success is False
+        assert index.count() == 0
+    finally:
+        index.close()
+
+
+@pytest.mark.asyncio
+async def test_process_message_survives_a_broken_index():
+    """The index is a cache of GitHub; losing it must not lose the entry."""
+    config = _make_config()
+    index = MagicMock()
+    index.index_entry.side_effect = RuntimeError("disk full")
+
+    result = await process_message(
+        _make_message(), config, MagicMock(), MagicMock(), _downloader, None, None, index
+    )
+
+    assert result.success is True
+
+
+def test_open_search_index_returns_none_when_disabled():
+    assert open_search_index(_make_config(search_enabled=False)) is None
+
+
+def test_open_search_index_returns_none_when_the_file_cannot_be_opened():
+    """A broken index must leave the diary bot running."""
+    config = _make_config(search_enabled=True, search_index_path="/proc/nope/search.db")
+    assert open_search_index(config) is None
+
+
+def test_build_search_reply_lists_hits_newest_first():
+    hits = [
+        SearchHit("2026-07-26", "09:00", "朝ラン5km", ["運動"], 0),
+        SearchHit("2026-07-25", "20:00", "スーパーで買い物", ["買い物"], 1),
+    ]
+    reply = build_search_reply("ラン", None, hits)
+    assert "2件" in reply
+    assert reply.index("2026-07-26") < reply.index("2026-07-25")
+    assert "#運動" in reply
+    assert "📷1" in reply
+
+
+def test_build_search_reply_reports_an_empty_result():
+    assert "一致する記録はありません" in build_search_reply("ホッケー", None, [])
+
+
+def test_build_search_reply_names_the_tag_filter():
+    assert "タグ #運動" in build_search_reply("", "運動", [])
+
+
+def test_build_search_reply_fits_in_one_discord_message():
+    hits = [SearchHit("2026-07-26", "09:00", "あ" * 200, [], 0) for _ in range(50)]
+    reply = build_search_reply("あ", None, hits)
+    assert len(reply) <= 2000
+    assert "ほか" in reply

@@ -1,6 +1,12 @@
 import pytest
 
-from app.config import Config, ConfigError, is_user_allowed, load_config
+from app.config import (
+    DEFAULT_TAG_VOCABULARY,
+    Config,
+    ConfigError,
+    is_user_allowed,
+    load_config,
+)
 
 BASE_ENV = {
     "DISCORD_BOT_TOKEN": "token",
@@ -238,6 +244,12 @@ def _make_config(**overrides) -> Config:
         periodic_summary_time=None,
         periodic_summary_max_input_chars=12000,
         report_storage_usage=True,
+        tagging_enabled=False,
+        tag_vocabulary=DEFAULT_TAG_VOCABULARY,
+        tagging_timeout_seconds=30,
+        search_enabled=False,
+        search_index_path="data/search.db",
+        search_backfill_days=730,
         healthcheck_url=None,
         healthcheck_interval_minutes=60,
         weather_latitude=None,
@@ -338,3 +350,53 @@ def test_load_config_rejects_enabled_summary_without_time():
 def test_load_config_storage_usage_can_be_disabled():
     env = dict(BASE_ENV, REPORT_STORAGE_USAGE="false")
     assert load_config(env=env, load_dotenv_file=False).report_storage_usage is False
+
+
+def test_load_config_tagging_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.tagging_enabled is False
+    assert config.tag_vocabulary == DEFAULT_TAG_VOCABULARY
+    assert config.tagging_timeout_seconds == 30
+
+
+def test_load_config_enables_tagging_with_a_provider():
+    env = dict(BASE_ENV, TAGGING_ENABLED="true", SUMMARY_PROVIDER="ollama")
+    assert load_config(env=env, load_dotenv_file=False).tagging_enabled is True
+
+
+def test_load_config_rejects_tagging_without_a_provider():
+    """Tags come from the LLM; none means they could never be produced."""
+    env = dict(BASE_ENV, TAGGING_ENABLED="true")
+    with pytest.raises(ConfigError, match="SUMMARY_PROVIDER"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_parses_a_custom_vocabulary():
+    env = dict(BASE_ENV, TAG_VOCABULARY="運動, #ホッケー ,運動")
+    assert load_config(env=env, load_dotenv_file=False).tag_vocabulary == ("運動", "ホッケー")
+
+
+def test_load_config_rejects_a_tag_containing_a_space():
+    env = dict(BASE_ENV, TAG_VOCABULARY="朝 ラン")
+    with pytest.raises(ConfigError, match="TAG_VOCABULARY"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_rejects_an_all_blank_vocabulary():
+    env = dict(BASE_ENV, TAG_VOCABULARY=", ,")
+    with pytest.raises(ConfigError, match="TAG_VOCABULARY"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_search_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.search_enabled is False
+    assert config.search_index_path == "data/search.db"
+    assert config.search_backfill_days == 730
+
+
+def test_load_config_enables_search():
+    env = dict(BASE_ENV, SEARCH_ENABLED="true", SEARCH_INDEX_PATH="C:/bot/search.db")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.search_enabled is True
+    assert config.search_index_path == "C:/bot/search.db"
