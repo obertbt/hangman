@@ -198,6 +198,16 @@ Get-Content logs\bot.log -Tail 20
 Get-Content logs\launcher.log -Tail 30
 ```
 
+`launcher.log` に出るメッセージの意味は次のとおりです（英語表記なのは、日本語を含めるとPowerShell 5.1で文字化けするためです）。
+
+| メッセージ | 意味 |
+|---|---|
+| `[INFO] starting bot` | Botの起動を開始しました |
+| `[INFO] bot exited (code: 0)` | Botが正常終了しました |
+| `[ERROR] venv not found: ...` | 仮想環境がありません。`python -m venv .venv` と `pip install -r requirements.txt` を実行してください |
+| `[ERROR] .env not found: ...` | `.env` がありません。`copy .env.example .env` で作成し、設定を記入してください |
+| `[ERROR] failed to start: ...` | Pythonの起動自体に失敗しました。メッセージの内容を確認してください |
+
 ### Discordで確認
 
 1. `#daily` にテキストを投稿 → Botが返信し、GitHubに保存される
@@ -258,6 +268,7 @@ Windows Updateの自動再起動でBotが止まることがありますが、**�
 |---|---|
 | タスクの状態が「準備完了」のまま動かない | 「操作」タブのパスが間違っている可能性があります。`deploy\run-bot.ps1` が実在するか確認してください |
 | 前回の実行結果が `1`（`0x1`） | 起動処理が失敗しています。**`logs\launcher.log` に原因が記録されています**。`Get-Content logs\launcher.log -Tail 30` で確認してください |
+| `run-bot.ps1` 実行時に「配列インデックス式が存在しないか、または無効です」「文字列に終端記号 " がありません」などの構文エラー | スクリプトが文字化けしています。`deploy\run-bot.ps1` を編集して日本語などの非ASCII文字を追加すると発生します（PowerShell 5.1はBOM無しの`.ps1`を日本語環境の文字コードとして読むため）。`git checkout deploy\run-bot.ps1` で元に戻してください |
 | `logs\bot.log` が作られない | Botが起動する前に失敗しています。`logs\launcher.log` を確認してください。手元で `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<リポジトリのパス>\deploy\run-bot.ps1"` を実行すると、同じ処理を画面上で再現できます |
 | ログファイルが作られない | `.env` に `LOG_FILE=logs\bot.log` を書き忘れています |
 | 数日後に勝手に止まっている | 「設定」タブの**「タスクを停止するまでの時間」のチェックが外れているか**確認してください（既定3日で強制終了されます） |
