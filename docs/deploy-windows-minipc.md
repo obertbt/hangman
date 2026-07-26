@@ -277,6 +277,8 @@ Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, SessionId, 
 Select-String -Path logs\bot.log -Pattern "起動しました" -Encoding UTF8 | Select-Object -Last 5
 ```
 
+> 💡 現在のBotは**二重起動を自動で拒否します**。2つ目を起動しようとすると、ログに `Botは既に起動しています（ロックファイル: data\\bot.lock）` と出て終了します。起動スクリプトも、開始前に取り残されたBotがいれば停止します。
+
 本当に二重起動していた場合は、いったん全部止めてからタスクだけを起動し直します。
 
 > ⚠️ **この操作はPowerShellを「管理者として実行」で開いてください。** タスクスケジューラが起動したBotはセッション0で動いているため、通常のPowerShellからは「アクセスが拒否されました」となり停止できません。
@@ -286,6 +288,8 @@ Stop-ScheduledTask -TaskName HearthLifelogBot
 Start-Sleep -Seconds 3
 Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
+
+**`Stop-ScheduledTask` だけでは止まりきらないことがあります。** タスクが止めるのは起動スクリプト（PowerShell）で、その子である `python.exe` が生き残るためです。上の3行目まで実行するのは、そのためです。
 
 何も残っていないことを確認します。
 

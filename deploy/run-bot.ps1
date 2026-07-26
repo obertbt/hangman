@@ -51,6 +51,22 @@ if (-not (Test-Path (Join-Path $repoRoot ".env"))) {
     exit 1
 }
 
+# Stopping the scheduled task kills this launcher but can orphan the
+# python process it started, which then keeps answering Discord. Clear
+# any survivor before starting, or the bot ends up running twice.
+$lockFile = Join-Path $repoRoot "data\bot.lock"
+if (Test-Path $lockFile) {
+    $stalePid = (Get-Content -Path $lockFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($stalePid -match '^\d+$') {
+        $stale = Get-Process -Id ([int]$stalePid) -ErrorAction SilentlyContinue
+        if ($stale -and $stale.ProcessName -eq "python") {
+            Write-LauncherLog "[WARN] stopping orphaned bot (PID: $stalePid)"
+            Stop-Process -Id ([int]$stalePid) -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        }
+    }
+}
+
 Write-LauncherLog "[INFO] starting bot"
 
 try {

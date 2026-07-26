@@ -11,6 +11,7 @@ from app.config import Config, ConfigError, load_config
 from app.discord_handler import create_client
 from app.github_service import GitHubService
 from app.r2_service import R2Service
+from app.single_instance import AlreadyRunningError, acquire_lock
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
@@ -57,6 +58,15 @@ def main() -> None:
         force=True,
     )
     logger = logging.getLogger(__name__)
+
+    # Held for the life of the process; a second bot exits here instead
+    # of quietly saving every post twice.
+    try:
+        lock = acquire_lock()
+    except AlreadyRunningError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
+
     # The PID makes it obvious whether two bots are genuinely running:
     # on Windows the venv launcher shows a second python.exe that is only
     # a child of the real interpreter, not a second instance.
@@ -68,7 +78,10 @@ def main() -> None:
     r2_service = R2Service(config)
     client = create_client(config, github_service, r2_service)
 
-    client.run(config.discord_bot_token)
+    try:
+        client.run(config.discord_bot_token)
+    finally:
+        lock.close()
 
 
 if __name__ == "__main__":
