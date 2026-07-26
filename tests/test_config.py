@@ -40,6 +40,12 @@ def test_load_config_invalid_int_raises():
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_rejects_unknown_timezone():
+    env = dict(BASE_ENV, TIMEZONE="Not/AZone")
+    with pytest.raises(ConfigError, match="tzdata"):
+        load_config(env=env, load_dotenv_file=False)
+
+
 def test_load_config_parses_allowed_user_ids():
     env = dict(BASE_ENV, ALLOWED_DISCORD_USER_IDS="1, 2,3")
     config = load_config(env=env, load_dotenv_file=False)

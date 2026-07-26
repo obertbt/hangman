@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from dotenv import load_dotenv
 
 REQUIRED_KEYS = [
@@ -103,6 +105,16 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             f"環境変数 MAX_ATTACHMENT_SIZE_MB は整数で指定してください（値: {max_size_raw!r}）"
         ) from exc
 
+    timezone = env.get("TIMEZONE") or "Asia/Tokyo"
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise ConfigError(
+            f"タイムゾーン {timezone!r} が見つかりません。"
+            "Windowsの場合は 'pip install tzdata' を実行してください"
+            "（requirements.txt に含まれています）。"
+        ) from exc
+
     return Config(
         discord_bot_token=env["DISCORD_BOT_TOKEN"],
         discord_guild_id=_parse_int(env, "DISCORD_GUILD_ID"),
@@ -117,7 +129,7 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         r2_secret_access_key=env["R2_SECRET_ACCESS_KEY"],
         r2_bucket_name=env["R2_BUCKET_NAME"],
         r2_endpoint_url=env["R2_ENDPOINT_URL"],
-        timezone=env.get("TIMEZONE") or "Asia/Tokyo",
+        timezone=timezone,
         max_attachment_size_mb=max_attachment_size_mb,
     )
 
