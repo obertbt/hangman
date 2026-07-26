@@ -63,6 +63,13 @@ class CreatedIssue:
 
 
 @dataclass
+class IssueSummary:
+    number: int
+    title: str
+    url: str
+
+
+@dataclass
 class ProcessResult:
     success: bool
     reply: str

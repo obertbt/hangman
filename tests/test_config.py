@@ -72,6 +72,43 @@ def test_load_config_rejects_invalid_signed_url_expiry(value):
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_notification_times_default_to_4am_and_8pm():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert (config.morning_notification_time.hour, config.morning_notification_time.minute) == (4, 0)
+    assert (config.evening_notification_time.hour, config.evening_notification_time.minute) == (20, 0)
+    assert config.morning_notification_time.tzinfo is not None
+
+
+def test_load_config_parses_custom_notification_times():
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME="07:30", EVENING_NOTIFICATION_TIME="23:05")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert (config.morning_notification_time.hour, config.morning_notification_time.minute) == (7, 30)
+    assert (config.evening_notification_time.hour, config.evening_notification_time.minute) == (23, 5)
+
+
+def test_load_config_empty_notification_time_disables_it():
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME="", EVENING_NOTIFICATION_TIME="")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.morning_notification_time is None
+    assert config.evening_notification_time is None
+
+
+@pytest.mark.parametrize("value", ["7", "07:60", "24:00", "abc", "07:30:00", "-1:00"])
+def test_load_config_rejects_invalid_notification_time(value):
+    env = dict(BASE_ENV, MORNING_NOTIFICATION_TIME=value)
+    with pytest.raises(ConfigError, match="MORNING_NOTIFICATION_TIME"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_parses_notification_channel_id():
+    env = dict(BASE_ENV, NOTIFICATION_CHANNEL_ID="555")
+    assert load_config(env=env, load_dotenv_file=False).notification_channel_id == 555
+
+
+def test_load_config_notification_channel_defaults_to_none():
+    assert load_config(env=BASE_ENV, load_dotenv_file=False).notification_channel_id is None
+
+
 def test_load_config_rejects_unknown_timezone():
     env = dict(BASE_ENV, TIMEZONE="Not/AZone")
     with pytest.raises(ConfigError, match="tzdata"):
@@ -103,6 +140,9 @@ def _make_config(**overrides) -> Config:
         timezone="Asia/Tokyo",
         max_attachment_size_mb=20,
         signed_url_expiry_seconds=300,
+        notification_channel_id=None,
+        morning_notification_time=None,
+        evening_notification_time=None,
     )
     defaults.update(overrides)
     return Config(**defaults)

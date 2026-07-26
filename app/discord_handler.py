@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
+from discord.ext import tasks
 
 from app.config import Config, is_user_allowed
 from app.github_service import GitHubSaveError, GitHubService, build_issue_title
@@ -26,6 +27,7 @@ from app.models import (
     ProcessResult,
     TaskData,
 )
+from app.notifications import MAX_LISTED_ISSUES, build_evening_message, build_morning_message
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
     R2Service,
@@ -291,6 +293,13 @@ def to_incoming_message(message: discord.Message) -> IncomingMessage:
     )
 
 
+def notification_channel_id(config: Config) -> int:
+    """Notifications go to their own channel when configured, else #daily."""
+    if config.notification_channel_id is not None:
+        return config.notification_channel_id
+    return config.discord_daily_channel_id
+
+
 def build_image_url_reply(key: str, expiry_seconds: int, url: str) -> str:
     minutes = max(1, round(expiry_seconds / 60))
     return (
@@ -315,6 +324,7 @@ class LifelogClient(discord.Client):
         self._http_session: aiohttp.ClientSession | None = None
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
+        self._notification_loops: list[tasks.Loop] = []
 
     def _register_commands(self) -> None:
         guild = discord.Object(id=self.config.discord_guild_id)
@@ -340,11 +350,74 @@ class LifelogClient(discord.Client):
                 "スラッシュコマンドの登録に失敗しました。Botの招待URLに "
                 "applications.commands スコープが含まれているか確認してください。"
             )
+        self._start_notification_loops()
+
+    def _start_notification_loops(self) -> None:
+        schedule = [
+            ("朝", self.config.morning_notification_time, self._send_morning_notification),
+            ("夜", self.config.evening_notification_time, self._send_evening_notification),
+        ]
+        for label, at_time, coro in schedule:
+            if at_time is None:
+                logger.info("%sの定時通知は無効です", label)
+                continue
+            loop = tasks.loop(time=at_time)(coro)
+            loop.start()
+            self._notification_loops.append(loop)
+            logger.info("%sの定時通知を %02d:%02d に設定しました", label, at_time.hour, at_time.minute)
 
     async def close(self) -> None:
+        for loop in self._notification_loops:
+            loop.cancel()
         if self._http_session is not None:
             await self._http_session.close()
         await super().close()
+
+    async def _notification_channel(self) -> discord.abc.Messageable | None:
+        channel_id = notification_channel_id(self.config)
+        channel = self.get_channel(channel_id)
+        if channel is None:
+            logger.warning(
+                "通知先チャンネル（ID: %s）が見つかりません。"
+                "NOTIFICATION_CHANNEL_ID の値とBotの権限を確認してください。",
+                channel_id,
+            )
+            return None
+        return channel
+
+    async def _send_morning_notification(self) -> None:
+        await self.wait_until_ready()
+        channel = await self._notification_channel()
+        if channel is None:
+            return
+        now = datetime.now(ZoneInfo(self.config.timezone))
+        try:
+            # One extra tells us whether the list was capped, without
+            # claiming a total we cannot know.
+            issues = await asyncio.to_thread(
+                self.github_service.list_open_issues, MAX_LISTED_ISSUES + 1
+            )
+        except Exception:
+            logger.exception("朝の通知用のIssue取得に失敗しました")
+            return
+        has_more = len(issues) > MAX_LISTED_ISSUES
+        issues = issues[:MAX_LISTED_ISSUES]
+        await channel.send(build_morning_message(now, issues, has_more))
+        logger.info("朝の定時通知を送信しました: 未完了タスク%s件", len(issues))
+
+    async def _send_evening_notification(self) -> None:
+        await self.wait_until_ready()
+        channel = await self._notification_channel()
+        if channel is None:
+            return
+        now = datetime.now(ZoneInfo(self.config.timezone))
+        try:
+            count = await asyncio.to_thread(self.github_service.count_entries_for_date, now)
+        except Exception:
+            logger.exception("夜の通知用の記録件数の取得に失敗しました")
+            return
+        await channel.send(build_evening_message(now, count))
+        logger.info("夜の定時通知を送信しました: 記録%s件", count)
 
     async def on_ready(self):
         logger.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "?")
@@ -370,6 +443,9 @@ class LifelogClient(discord.Client):
                 )
             else:
                 logger.info("監視チャンネルを確認しました: #%s（%s）", channel.name, guild.name)
+            notify_channel = guild.get_channel(notification_channel_id(self.config))
+            if notify_channel is not None:
+                logger.info("通知先チャンネル: #%s", notify_channel.name)
 
     async def on_message(self, message: discord.Message) -> None:
         if self.user is not None and message.author.id == self.user.id:

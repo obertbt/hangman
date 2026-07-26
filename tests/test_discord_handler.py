@@ -13,6 +13,7 @@ from app.discord_handler import (
     describe_rejection,
     filter_image_attachments,
     is_task_command,
+    notification_channel_id,
     parse_task_text,
     process_message,
     process_task_command,
@@ -44,6 +45,9 @@ def _make_config(**overrides) -> Config:
         timezone="Asia/Tokyo",
         max_attachment_size_mb=20,
         signed_url_expiry_seconds=300,
+        notification_channel_id=None,
+        morning_notification_time=None,
+        evening_notification_time=None,
     )
     defaults.update(overrides)
     return Config(**defaults)
@@ -393,3 +397,8 @@ async def test_process_task_command_ignores_disallowed_user():
 
     assert await process_task_command(msg, config, github_service) is None
     github_service.create_issue.assert_not_called()
+
+
+def test_notification_channel_id_falls_back_to_daily_channel():
+    assert notification_channel_id(_make_config(notification_channel_id=None)) == 222
+    assert notification_channel_id(_make_config(notification_channel_id=555)) == 555

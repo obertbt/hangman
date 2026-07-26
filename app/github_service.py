@@ -1,17 +1,25 @@
 """Saves lifelog entries as Markdown, and tasks as Issues, in a GitHub repo."""
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 
 from github import Auth, Github, GithubException, UnknownObjectException
 
 from app.config import Config
-from app.models import CreatedIssue, MarkdownEntryData, TaskData
+from app.models import CreatedIssue, IssueSummary, MarkdownEntryData, TaskData
 
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_ISSUE_TITLE_LENGTH = 120
+
+_ENTRY_HEADING_RE = re.compile(r"^## \d{2}:\d{2}\s*$", re.MULTILINE)
+
+
+def count_entry_headings(markdown: str) -> int:
+    """Number of `## HH:MM` entries in a daily Markdown file."""
+    return len(_ENTRY_HEADING_RE.findall(markdown))
 
 
 class GitHubSaveError(Exception):
@@ -131,3 +139,35 @@ class GitHubService:
                 ) from exc
             raise GitHubIssueError(f"GitHub Issueの作成に失敗しました: {exc}") from exc
         return CreatedIssue(number=issue.number, url=issue.html_url)
+
+    def list_open_issues(self, limit: int) -> list[IssueSummary]:
+        """Open Issues, newest first. Pull requests are excluded."""
+        try:
+            issues = self._repo().get_issues(state="open", sort="created", direction="desc")
+            summaries: list[IssueSummary] = []
+            for issue in issues:
+                if issue.pull_request is not None:
+                    continue
+                summaries.append(
+                    IssueSummary(number=issue.number, title=issue.title, url=issue.html_url)
+                )
+                if len(summaries) >= limit:
+                    break
+            return summaries
+        except GithubException as exc:
+            raise GitHubIssueError(f"GitHub Issueの取得に失敗しました: {exc}") from exc
+
+    def count_entries_for_date(self, dt: datetime) -> int:
+        """How many lifelog entries the given (JST) date's file holds.
+
+        A missing file simply means nothing was recorded yet.
+        """
+        try:
+            contents = self._repo().get_contents(
+                build_daily_path(dt), ref=self._config.github_branch
+            )
+        except UnknownObjectException:
+            return 0
+        except GithubException as exc:
+            raise GitHubSaveError(f"日記ファイルの取得に失敗しました: {exc}") from exc
+        return count_entry_headings(contents.decoded_content.decode("utf-8"))

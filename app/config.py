@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import time as time_of_day
 from typing import Mapping
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -51,6 +52,10 @@ class Config:
     max_attachment_size_mb: int
     signed_url_expiry_seconds: int
 
+    notification_channel_id: int | None
+    morning_notification_time: time_of_day | None
+    evening_notification_time: time_of_day | None
+
     @property
     def max_attachment_size_bytes(self) -> int:
         return self.max_attachment_size_mb * 1024 * 1024
@@ -62,6 +67,37 @@ def _parse_int(env: Mapping[str, str], key: str) -> int:
         return int(value)
     except ValueError as exc:
         raise ConfigError(f"環境変数 {key} は整数で指定してください（値: {value!r}）") from exc
+
+
+def _parse_optional_channel_id(raw: str | None, key: str) -> int | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"環境変数 {key} は整数で指定してください（値: {raw!r}）") from exc
+
+
+def parse_time_of_day(raw: str | None, key: str, tzinfo) -> time_of_day | None:
+    """Parse an 'HH:MM' notification time. Empty disables the notification."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    parts = raw.split(":")
+    if len(parts) != 2:
+        raise ConfigError(f"環境変数 {key} は HH:MM 形式で指定してください（値: {raw!r}）")
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise ConfigError(
+            f"環境変数 {key} は HH:MM 形式で指定してください（値: {raw!r}）"
+        ) from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ConfigError(
+            f"環境変数 {key} の時刻が範囲外です（00:00〜23:59で指定してください。値: {raw!r}）"
+        )
+    return time_of_day(hour=hour, minute=minute, tzinfo=tzinfo)
 
 
 def _parse_allowed_user_ids(raw: str | None) -> frozenset[int]:
@@ -107,17 +143,9 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             f"環境変数 MAX_ATTACHMENT_SIZE_MB は整数で指定してください（値: {max_size_raw!r}）"
         ) from exc
 
-    task_channel_raw = env.get("DISCORD_TASK_CHANNEL_ID", "").strip()
-    if task_channel_raw:
-        try:
-            discord_task_channel_id: int | None = int(task_channel_raw)
-        except ValueError as exc:
-            raise ConfigError(
-                "環境変数 DISCORD_TASK_CHANNEL_ID は整数で指定してください"
-                f"（値: {task_channel_raw!r}）"
-            ) from exc
-    else:
-        discord_task_channel_id = None
+    discord_task_channel_id = _parse_optional_channel_id(
+        env.get("DISCORD_TASK_CHANNEL_ID"), "DISCORD_TASK_CHANNEL_ID"
+    )
 
     expiry_raw = env.get("SIGNED_URL_EXPIRY_SECONDS", "300")
     try:
@@ -135,13 +163,20 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
 
     timezone = env.get("TIMEZONE") or "Asia/Tokyo"
     try:
-        ZoneInfo(timezone)
+        tzinfo = ZoneInfo(timezone)
     except ZoneInfoNotFoundError as exc:
         raise ConfigError(
             f"タイムゾーン {timezone!r} が見つかりません。"
             "Windowsの場合は 'pip install tzdata' を実行してください"
             "（requirements.txt に含まれています）。"
         ) from exc
+
+    morning_notification_time = parse_time_of_day(
+        env.get("MORNING_NOTIFICATION_TIME", "04:00"), "MORNING_NOTIFICATION_TIME", tzinfo
+    )
+    evening_notification_time = parse_time_of_day(
+        env.get("EVENING_NOTIFICATION_TIME", "20:00"), "EVENING_NOTIFICATION_TIME", tzinfo
+    )
 
     return Config(
         discord_bot_token=env["DISCORD_BOT_TOKEN"],
@@ -161,6 +196,11 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         timezone=timezone,
         max_attachment_size_mb=max_attachment_size_mb,
         signed_url_expiry_seconds=signed_url_expiry_seconds,
+        notification_channel_id=_parse_optional_channel_id(
+            env.get("NOTIFICATION_CHANNEL_ID"), "NOTIFICATION_CHANNEL_ID"
+        ),
+        morning_notification_time=morning_notification_time,
+        evening_notification_time=evening_notification_time,
     )
 
 

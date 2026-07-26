@@ -15,6 +15,7 @@ from app.github_service import (
     build_entry_markdown,
     build_issue_body,
     build_issue_title,
+    count_entry_headings,
 )
 from app.models import MarkdownEntryData, TaskData
 
@@ -228,3 +229,64 @@ def test_create_issue_raises_on_other_errors():
 
     with pytest.raises(GitHubIssueError):
         service.create_issue(_make_task())
+
+
+def test_count_entry_headings_counts_time_headings():
+    markdown = (
+        "## 09:00\n\n朝の記録\n\n- Discord投稿者: tomoya\n\n"
+        "## 21:35\n\n夜の記録\n\n- Discord投稿者: tomoya\n"
+    )
+    assert count_entry_headings(markdown) == 2
+
+
+def test_count_entry_headings_ignores_other_headings():
+    markdown = "# 見出し\n\n## メモ\n\n## 9:00\n\n## 09:00\n"
+    assert count_entry_headings(markdown) == 1
+
+
+def test_count_entries_for_date_returns_zero_when_file_missing():
+    repo = MagicMock()
+    repo.get_contents.side_effect = UnknownObjectException(404, {"message": "Not Found"})
+    service = _service_with_repo(repo)
+    assert service.count_entries_for_date(datetime(2026, 7, 27, tzinfo=JST)) == 0
+
+
+def test_count_entries_for_date_counts_existing_entries():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile("## 09:00\n\nあ\n\n## 21:35\n\nい\n")
+    service = _service_with_repo(repo)
+    assert service.count_entries_for_date(datetime(2026, 7, 27, tzinfo=JST)) == 2
+
+
+def test_list_open_issues_excludes_pull_requests_and_respects_limit():
+    repo = MagicMock()
+    repo.get_issues.return_value = [
+        MagicMock(number=3, title="タスクA", html_url="u3", pull_request=None),
+        MagicMock(number=2, title="PR", html_url="u2", pull_request=object()),
+        MagicMock(number=1, title="タスクB", html_url="u1", pull_request=None),
+    ]
+    service = _service_with_repo(repo)
+
+    issues = service.list_open_issues(limit=10)
+
+    assert [i.number for i in issues] == [3, 1]
+    assert issues[0].title == "タスクA"
+    repo.get_issues.assert_called_once_with(state="open", sort="created", direction="desc")
+
+
+def test_list_open_issues_stops_at_limit():
+    repo = MagicMock()
+    repo.get_issues.return_value = [
+        MagicMock(number=n, title=f"t{n}", html_url=f"u{n}", pull_request=None)
+        for n in range(10)
+    ]
+    service = _service_with_repo(repo)
+    assert len(service.list_open_issues(limit=3)) == 3
+
+
+def test_list_open_issues_wraps_api_errors():
+    repo = MagicMock()
+    repo.get_issues.side_effect = GithubException(403, {"message": "forbidden"})
+    service = _service_with_repo(repo)
+    with pytest.raises(GitHubIssueError):
+        service.list_open_issues(limit=5)

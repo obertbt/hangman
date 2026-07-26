@@ -130,6 +130,10 @@ R2_ENDPOINT_URL=https://ACCOUNT_ID.r2.cloudflarestorage.com
 TIMEZONE=Asia/Tokyo
 MAX_ATTACHMENT_SIZE_MB=20     # 添付画像の上限サイズ（MB）
 SIGNED_URL_EXPIRY_SECONDS=300 # /image で発行する一時URLの有効秒数（既定5分・最大7日）
+
+NOTIFICATION_CHANNEL_ID=      # 定時通知の送信先チャンネルID（空なら #daily へ送信）
+MORNING_NOTIFICATION_TIME=04:00  # 朝の通知時刻（HH:MM・空欄で無効）
+EVENING_NOTIFICATION_TIME=20:00  # 夜の通知時刻（HH:MM・空欄で無効）
 ```
 
 `.env` は `.gitignore` に含まれているため、Gitにコミットされません。**トークン類を絶対にGitHubへコミットしないでください。**
@@ -211,6 +215,44 @@ https://github.com/obertbt/hangman/issues/12
 - Issueの本文には、投稿者・ユーザーID・メッセージID・投稿日時（JST）が自動で記録されます
 - GitHubトークンに **Issues: Read and write** 権限が必要です
 
+## 7.7 朝・夜の定時通知
+
+Botを起動している間、決まった時刻に自動でメッセージが届きます。時刻は `.env` で変更でき、`TIMEZONE`（既定 `Asia/Tokyo`）で判定されます。
+
+**朝の通知（既定 04:00）— 未完了タスク一覧**
+
+```
+☀️ おはようございます（2026-07-27）
+未完了のタスクが2件あります。
+
+- #12 車のオイル交換を予約する
+  https://github.com/obertbt/hangman/issues/12
+- #11 部屋の模様替え
+  https://github.com/obertbt/hangman/issues/11
+```
+
+`!task` で作ったGitHub IssueのうちOpen状態のものが、新しい順に最大10件表示されます。Issueを閉じれば一覧から消えます。タスクが無いときは「未完了のタスクはありません。」と表示されます。
+
+**夜の通知（既定 20:00）— 今日の記録件数**
+
+```
+🌙 今日のライフログ（2026-07-26）
+今日は3件の記録がありました。おつかれさまでした。
+```
+
+まだ何も記録していない日は、次のように書き忘れを知らせます。
+
+```
+🌙 今日のライフログ（2026-07-26）
+まだ今日の記録がありません。ひとことだけでも残しておきませんか？
+```
+
+補足：
+
+- 通知先は既定で `#daily` です。別のチャンネルへ送りたい場合は `NOTIFICATION_CHANNEL_ID` を設定してください
+- 通知を止めたい場合は、対応する時刻の設定を**空欄**にします（例: `MORNING_NOTIFICATION_TIME=`）
+- **Botを起動している間だけ動作します。** PCの電源が切れていたりBotが停止していると、その回の通知は送られません（後からまとめて送られることはありません）
+
 ## 8. 動作確認方法
 
 1. `.env` を設定した状態でBotを起動します。
@@ -234,6 +276,7 @@ https://github.com/obertbt/hangman/issues/12
 | Botはオンラインだが `#daily` に投稿しても反応しない | Message Content Intentが無効になっていないか確認してください。また `DISCORD_GUILD_ID` / `DISCORD_DAILY_CHANNEL_ID` が実際の値と一致しているか確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：GitHub保存` と返信される | GitHub Tokenの権限（Contents: Read and write）やリポジトリ名・ブランチ名を確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：R2アップロード` と返信される | R2のAPIトークン権限や `R2_ENDPOINT_URL` の形式（`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`）を確認してください。 |
+| 定時通知が届かない | Botが起動していない時刻だった可能性があります（通知はBot稼働中のみ送信されます）。また `.env` の時刻設定が空欄になっていないか、起動ログの「朝の定時通知を 04:00 に設定しました」という行が出ているか確認してください。 |
 | `!task` で `❌ 保存に失敗しました / 処理段階：GitHub Issue作成` と返信される | GitHubのFine-grained tokenに **Issues: Read and write** 権限が付いているか確認してください。権限を追加した場合はトークンの再発行が必要なことがあります。 |
 | `/image` コマンドがDiscordの入力候補に出てこない | 招待URLのSCOPESに `applications.commands` が含まれていない可能性があります。READMEの手順2でチェックを入れ直した招待URLで、Botを再度招待してください（サーバーから追放する必要はありません）。その後Botを再起動し、Discordアプリも再読み込みしてください。 |
 | GitHubへの書き込みで409エラーが頻発する | 同じ日付ファイルへの同時書き込みが多発している状態です。Bot内部で自動的に再試行（最大3回）しますが、それでも失敗する場合は投稿間隔を空けてください。 |
@@ -263,6 +306,7 @@ hearth-life/
 │  ├─ discord_handler.py  # Discord投稿・/image・!task の処理と返信
 │  ├─ github_service.py   # GitHubへのMarkdown保存・Issue作成
 │  ├─ r2_service.py       # R2への画像アップロード・削除・署名付きURL発行
+│  ├─ notifications.py    # 朝・夜の定時通知メッセージの組み立て
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
@@ -279,7 +323,6 @@ hearth-life/
 ## 12. 現時点で実装していないもの
 
 - AIによる分類・要約
-- 定時通知
 - 動画・音声・PDF対応
 - 画像のOCR・自動圧縮
 - 恒久的な公開URL（一時的な署名付きURLのみ対応）
@@ -291,5 +334,5 @@ hearth-life/
 
 1. ~~`/image` コマンドで、R2の画像に対する一時的な署名付きURLを発行する機能~~（実装済み）
 2. ~~`!task` によるGitHub Issue作成~~（実装済み）
-3. 朝・夜の定時通知
+3. ~~朝・夜の定時通知~~（実装済み）
 4. AIによる日記の整理・要約
