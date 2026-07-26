@@ -56,9 +56,9 @@ GitHubの日記ファイルには画像そのものではなく、R2のオブジ
 2. [Fine-grained personal access token](https://github.com/settings/tokens?type=beta) を作成します。
    - Repository access: **Only select repositories** → 作成したリポジトリのみを選択
    - Permissions:
-     - **Contents: Read and write**
+     - **Contents: Read and write**（日記のMarkdown保存に必要）
      - **Metadata: Read-only**
-   - （将来 `!task` 機能を追加する場合は `Issues: Read and write` も追加します）
+     - **Issues: Read and write**（`!task` でIssueを作成するために必要）
 3. 発行されたトークンを控えます（この画面を閉じると再表示できません）。
 
 ---
@@ -113,6 +113,7 @@ cp .env.example .env
 DISCORD_BOT_TOKEN=            # DiscordのBot Token
 DISCORD_GUILD_ID=             # DiscordサーバーのID
 DISCORD_DAILY_CHANNEL_ID=     # #daily チャンネルのID
+DISCORD_TASK_CHANNEL_ID=      # !task を受け付けるチャンネルID（空なら #daily で受け付ける）
 ALLOWED_DISCORD_USER_IDS=     # 投稿を許可するユーザーIDをカンマ区切りで（空なら全員許可）
 
 GITHUB_TOKEN=                 # Fine-grained personal access token
@@ -180,6 +181,36 @@ R2バケットは非公開のため、保存した画像は通常のURLでは閲
 - 有効期間は `.env` の `SIGNED_URL_EXPIRY_SECONDS` で変更できます（秒単位、最大7日）。
 - `ALLOWED_DISCORD_USER_IDS` を設定している場合、対象外のユーザーはこのコマンドを使えません。
 
+## 7.6 タスクを登録する（`!task` コマンド）
+
+`!task` で始まる投稿は、日記ではなく **GitHub Issue** として登録されます。
+
+```
+!task 車のオイル交換を予約する
+```
+
+複数行で書くと、**1行目がIssueのタイトル**、2行目以降が本文になります。
+
+```
+!task 車のオイル交換を予約する
+ディーラーは平日のみ。前回は1月。
+```
+
+成功すると、Botが作成したIssueの番号とURLを返信します。
+
+```
+✅ GitHub Issueを作成しました
+#12 車のオイル交換を予約する
+https://github.com/obertbt/hangman/issues/12
+```
+
+補足：
+
+- `!task` の投稿は**日記ファイルには保存されません**（Issueとの二重記録を避けるため）
+- 既定では `#daily` チャンネルで受け付けます。専用の `#task` チャンネルを作った場合は、そのチャンネルIDを `.env` の `DISCORD_TASK_CHANNEL_ID` に設定してください
+- Issueの本文には、投稿者・ユーザーID・メッセージID・投稿日時（JST）が自動で記録されます
+- GitHubトークンに **Issues: Read and write** 権限が必要です
+
 ## 8. 動作確認方法
 
 1. `.env` を設定した状態でBotを起動します。
@@ -203,6 +234,7 @@ R2バケットは非公開のため、保存した画像は通常のURLでは閲
 | Botはオンラインだが `#daily` に投稿しても反応しない | Message Content Intentが無効になっていないか確認してください。また `DISCORD_GUILD_ID` / `DISCORD_DAILY_CHANNEL_ID` が実際の値と一致しているか確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：GitHub保存` と返信される | GitHub Tokenの権限（Contents: Read and write）やリポジトリ名・ブランチ名を確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：R2アップロード` と返信される | R2のAPIトークン権限や `R2_ENDPOINT_URL` の形式（`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`）を確認してください。 |
+| `!task` で `❌ 保存に失敗しました / 処理段階：GitHub Issue作成` と返信される | GitHubのFine-grained tokenに **Issues: Read and write** 権限が付いているか確認してください。権限を追加した場合はトークンの再発行が必要なことがあります。 |
 | `/image` コマンドがDiscordの入力候補に出てこない | 招待URLのSCOPESに `applications.commands` が含まれていない可能性があります。READMEの手順2でチェックを入れ直した招待URLで、Botを再度招待してください（サーバーから追放する必要はありません）。その後Botを再起動し、Discordアプリも再読み込みしてください。 |
 | GitHubへの書き込みで409エラーが頻発する | 同じ日付ファイルへの同時書き込みが多発している状態です。Bot内部で自動的に再試行（最大3回）しますが、それでも失敗する場合は投稿間隔を空けてください。 |
 
@@ -228,8 +260,8 @@ hearth-life/
 ├─ app/
 │  ├─ main.py             # エントリーポイント
 │  ├─ config.py           # 環境変数の読み込み・検証
-│  ├─ discord_handler.py  # Discordメッセージ・/imageコマンドの処理と返信
-│  ├─ github_service.py   # GitHubへのMarkdown保存
+│  ├─ discord_handler.py  # Discord投稿・/image・!task の処理と返信
+│  ├─ github_service.py   # GitHubへのMarkdown保存・Issue作成
 │  ├─ r2_service.py       # R2への画像アップロード・削除・署名付きURL発行
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
@@ -247,7 +279,6 @@ hearth-life/
 ## 12. 現時点で実装していないもの
 
 - AIによる分類・要約
-- GitHub Issue作成（`!task` など）
 - 定時通知
 - 動画・音声・PDF対応
 - 画像のOCR・自動圧縮
@@ -259,6 +290,6 @@ hearth-life/
 ## 13. 次に追加できる機能
 
 1. ~~`/image` コマンドで、R2の画像に対する一時的な署名付きURLを発行する機能~~（実装済み）
-2. `!task` によるGitHub Issue作成
+2. ~~`!task` によるGitHub Issue作成~~（実装済み）
 3. 朝・夜の定時通知
 4. AIによる日記の整理・要約

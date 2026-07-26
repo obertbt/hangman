@@ -33,6 +33,7 @@ class Config:
     discord_bot_token: str
     discord_guild_id: int
     discord_daily_channel_id: int
+    discord_task_channel_id: int | None
     allowed_discord_user_ids: frozenset[int]
 
     github_token: str
@@ -106,6 +107,18 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             f"環境変数 MAX_ATTACHMENT_SIZE_MB は整数で指定してください（値: {max_size_raw!r}）"
         ) from exc
 
+    task_channel_raw = env.get("DISCORD_TASK_CHANNEL_ID", "").strip()
+    if task_channel_raw:
+        try:
+            discord_task_channel_id: int | None = int(task_channel_raw)
+        except ValueError as exc:
+            raise ConfigError(
+                "環境変数 DISCORD_TASK_CHANNEL_ID は整数で指定してください"
+                f"（値: {task_channel_raw!r}）"
+            ) from exc
+    else:
+        discord_task_channel_id = None
+
     expiry_raw = env.get("SIGNED_URL_EXPIRY_SECONDS", "300")
     try:
         signed_url_expiry_seconds = int(expiry_raw)
@@ -134,6 +147,7 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         discord_bot_token=env["DISCORD_BOT_TOKEN"],
         discord_guild_id=_parse_int(env, "DISCORD_GUILD_ID"),
         discord_daily_channel_id=_parse_int(env, "DISCORD_DAILY_CHANNEL_ID"),
+        discord_task_channel_id=discord_task_channel_id,
         allowed_discord_user_ids=_parse_allowed_user_ids(env.get("ALLOWED_DISCORD_USER_IDS")),
         github_token=env["GITHUB_TOKEN"],
         github_owner=env["GITHUB_OWNER"],

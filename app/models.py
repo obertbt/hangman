@@ -48,6 +48,21 @@ class MarkdownEntryData:
 
 
 @dataclass
+class TaskData:
+    text: str
+    author_name: str
+    author_id: int
+    message_id: int
+    iso_datetime: str
+
+
+@dataclass
+class CreatedIssue:
+    number: int
+    url: str
+
+
+@dataclass
 class ProcessResult:
     success: bool
     reply: str

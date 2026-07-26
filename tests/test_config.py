@@ -40,6 +40,21 @@ def test_load_config_invalid_int_raises():
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_task_channel_defaults_to_none():
+    assert load_config(env=BASE_ENV, load_dotenv_file=False).discord_task_channel_id is None
+
+
+def test_load_config_parses_task_channel_id():
+    env = dict(BASE_ENV, DISCORD_TASK_CHANNEL_ID="444")
+    assert load_config(env=env, load_dotenv_file=False).discord_task_channel_id == 444
+
+
+def test_load_config_rejects_invalid_task_channel_id():
+    env = dict(BASE_ENV, DISCORD_TASK_CHANNEL_ID="abc")
+    with pytest.raises(ConfigError, match="DISCORD_TASK_CHANNEL_ID"):
+        load_config(env=env, load_dotenv_file=False)
+
+
 def test_load_config_signed_url_expiry_default():
     config = load_config(env=BASE_ENV, load_dotenv_file=False)
     assert config.signed_url_expiry_seconds == 300
@@ -74,6 +89,7 @@ def _make_config(**overrides) -> Config:
         discord_bot_token="t",
         discord_guild_id=1,
         discord_daily_channel_id=2,
+        discord_task_channel_id=None,
         allowed_discord_user_ids=frozenset(),
         github_token="t",
         github_owner="o",

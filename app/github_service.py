@@ -1,4 +1,4 @@
-"""Saves lifelog entries as Markdown into a GitHub repository."""
+"""Saves lifelog entries as Markdown, and tasks as Issues, in a GitHub repo."""
 from __future__ import annotations
 
 import time
@@ -7,14 +7,19 @@ from datetime import datetime
 from github import Auth, Github, GithubException, UnknownObjectException
 
 from app.config import Config
-from app.models import MarkdownEntryData
+from app.models import CreatedIssue, MarkdownEntryData, TaskData
 
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
+MAX_ISSUE_TITLE_LENGTH = 120
 
 
 class GitHubSaveError(Exception):
     """Raised when saving an entry to GitHub ultimately fails."""
+
+
+class GitHubIssueError(Exception):
+    """Raised when creating a GitHub Issue fails."""
 
 
 def build_daily_path(dt: datetime) -> str:
@@ -42,6 +47,30 @@ def build_entry_markdown(entry: MarkdownEntryData) -> str:
 
 def build_commit_message(dt: datetime, time_str: str) -> str:
     return f"Add Discord log for {dt:%Y-%m-%d} {time_str}"
+
+
+def build_issue_title(task_text: str) -> str:
+    """First line of the task, trimmed to a sane Issue title length."""
+    first_line = task_text.strip().splitlines()[0].strip()
+    if len(first_line) > MAX_ISSUE_TITLE_LENGTH:
+        return first_line[: MAX_ISSUE_TITLE_LENGTH - 1] + "…"
+    return first_line
+
+
+def build_issue_body(task: TaskData) -> str:
+    lines: list[str] = []
+    remainder = "\n".join(task.text.strip().splitlines()[1:]).strip()
+    if remainder:
+        lines.extend([remainder, ""])
+    lines.extend(
+        [
+            f"- Discord投稿者: {task.author_name}",
+            f"- DiscordユーザーID: {task.author_id}",
+            f"- DiscordメッセージID: {task.message_id}",
+            f"- Discord投稿日時: {task.iso_datetime}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 class GitHubService:
@@ -88,3 +117,17 @@ class GitHubService:
                     self._sleep_func(INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1)))
                     continue
                 raise GitHubSaveError(f"GitHubへの保存に失敗しました: {exc}") from exc
+
+    def create_issue(self, task: TaskData) -> CreatedIssue:
+        title = build_issue_title(task.text)
+        body = build_issue_body(task)
+        try:
+            issue = self._repo().create_issue(title=title, body=body)
+        except GithubException as exc:
+            if exc.status in (403, 404):
+                raise GitHubIssueError(
+                    "GitHub Issueの作成に失敗しました。トークンに Issues: Read and write "
+                    f"権限があるか確認してください: {exc}"
+                ) from exc
+            raise GitHubIssueError(f"GitHub Issueの作成に失敗しました: {exc}") from exc
+        return CreatedIssue(number=issue.number, url=issue.html_url)

@@ -18,8 +18,14 @@ import aiohttp
 import discord
 
 from app.config import Config, is_user_allowed
-from app.github_service import GitHubSaveError, GitHubService
-from app.models import IncomingAttachment, IncomingMessage, MarkdownEntryData, ProcessResult
+from app.github_service import GitHubSaveError, GitHubService, build_issue_title
+from app.models import (
+    IncomingAttachment,
+    IncomingMessage,
+    MarkdownEntryData,
+    ProcessResult,
+    TaskData,
+)
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
     R2Service,
@@ -31,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 STAGE_R2_UPLOAD = "R2アップロード"
 STAGE_GITHUB_SAVE = "GitHub保存"
+STAGE_GITHUB_ISSUE = "GitHub Issue作成"
+
+TASK_COMMAND_PREFIX = "!task"
 
 # (data, content_type)
 Downloader = Callable[[str, int], Awaitable[bytes]]
@@ -44,6 +53,56 @@ class AttachmentDownloadError(Exception):
     pass
 
 
+def is_task_command(content: str) -> bool:
+    stripped = content.strip()
+    if not stripped.lower().startswith(TASK_COMMAND_PREFIX):
+        return False
+    # "!taskfoo" must not count as the command.
+    remainder = stripped[len(TASK_COMMAND_PREFIX) :]
+    return remainder == "" or remainder[0].isspace()
+
+
+def parse_task_text(content: str) -> str:
+    """Text following the !task prefix, with surrounding whitespace removed."""
+    return content.strip()[len(TASK_COMMAND_PREFIX) :].strip()
+
+
+def task_channel_id(config: Config) -> int:
+    """!task listens on its own channel when configured, else on #daily."""
+    if config.discord_task_channel_id is not None:
+        return config.discord_task_channel_id
+    return config.discord_daily_channel_id
+
+
+def describe_task_rejection(config: Config, msg: IncomingMessage) -> str | None:
+    if msg.author_is_bot:
+        return "Botの投稿のため無視しました"
+    if msg.guild_id != config.discord_guild_id:
+        return (
+            f"対象外のサーバーです（受信: {msg.guild_id} / 設定 DISCORD_GUILD_ID: "
+            f"{config.discord_guild_id}）"
+        )
+    expected_channel = task_channel_id(config)
+    if msg.channel_id != expected_channel:
+        return (
+            f"!task の対象外チャンネルです（受信: {msg.channel_id} / 対象: {expected_channel}）"
+        )
+    if not is_user_allowed(config, msg.author_id):
+        return f"許可されていないユーザーです（受信: {msg.author_id}）"
+    return None
+
+
+def build_issue_success_reply(number: int, title: str, url: str) -> str:
+    return f"✅ GitHub Issueを作成しました\n#{number} {title}\n{url}"
+
+
+def build_task_usage_reply() -> str:
+    return (
+        "⚠️ タスクの内容が空です\n"
+        f"`{TASK_COMMAND_PREFIX} 牛乳を買う` のように、コマンドの後ろに内容を書いてください。"
+    )
+
+
 def describe_rejection(config: Config, msg: IncomingMessage) -> str | None:
     """Return why this message is ignored, or None if it should be processed.
 
@@ -52,6 +111,8 @@ def describe_rejection(config: Config, msg: IncomingMessage) -> str | None:
     """
     if msg.author_is_bot:
         return "Botの投稿のため無視しました"
+    if is_task_command(msg.content):
+        return "!taskコマンドのため、日記への保存対象外です"
     if msg.guild_id != config.discord_guild_id:
         return (
             f"対象外のサーバーです（受信: {msg.guild_id} / 設定 DISCORD_GUILD_ID: "
@@ -168,6 +229,45 @@ async def process_message(
     return ProcessResult(True, build_success_reply(len(uploaded_keys)))
 
 
+async def process_task_command(
+    msg: IncomingMessage,
+    config: Config,
+    github_service: GitHubService,
+) -> ProcessResult | None:
+    """Turn a !task post into a GitHub Issue.
+
+    Returns None if the message should be ignored entirely (no reply).
+    """
+    rejection = describe_task_rejection(config, msg)
+    if rejection is not None:
+        logger.info("!taskを無視しました: message_id=%s 理由=%s", msg.message_id, rejection)
+        return None
+
+    text = parse_task_text(msg.content)
+    if not text:
+        return ProcessResult(False, build_task_usage_reply())
+
+    jst_dt = msg.created_at.astimezone(ZoneInfo(config.timezone))
+    task = TaskData(
+        text=text,
+        author_name=msg.author_display_name,
+        author_id=msg.author_id,
+        message_id=msg.message_id,
+        iso_datetime=jst_dt.isoformat(),
+    )
+
+    try:
+        issue = await asyncio.to_thread(github_service.create_issue, task)
+    except Exception:
+        logger.exception("GitHub Issueの作成に失敗しました: message_id=%s", msg.message_id)
+        return ProcessResult(False, build_failure_reply(STAGE_GITHUB_ISSUE))
+
+    logger.info("GitHub Issueを作成しました: #%s message_id=%s", issue.number, msg.message_id)
+    return ProcessResult(
+        True, build_issue_success_reply(issue.number, build_issue_title(text), issue.url)
+    )
+
+
 def to_incoming_message(message: discord.Message) -> IncomingMessage:
     attachments = [
         IncomingAttachment(
@@ -249,9 +349,10 @@ class LifelogClient(discord.Client):
     async def on_ready(self):
         logger.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "?")
         logger.info(
-            "監視対象: サーバーID=%s / チャンネルID=%s",
+            "監視対象: サーバーID=%s / 日記チャンネルID=%s / !taskチャンネルID=%s",
             self.config.discord_guild_id,
             self.config.discord_daily_channel_id,
+            task_channel_id(self.config),
         )
         guild = self.get_guild(self.config.discord_guild_id)
         if guild is None:
@@ -285,9 +386,16 @@ class LifelogClient(discord.Client):
 
         incoming = to_incoming_message(message)
         try:
-            result = await process_message(
-                incoming, self.config, self.github_service, self.r2_service, self._download_attachment
-            )
+            if is_task_command(incoming.content):
+                result = await process_task_command(incoming, self.config, self.github_service)
+            else:
+                result = await process_message(
+                    incoming,
+                    self.config,
+                    self.github_service,
+                    self.r2_service,
+                    self._download_attachment,
+                )
         except Exception:
             logger.exception("メッセージ処理中に想定外のエラーが発生しました: message_id=%s", message.id)
             return

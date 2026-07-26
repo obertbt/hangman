@@ -12,10 +12,14 @@ from app.discord_handler import (
     build_success_reply,
     describe_rejection,
     filter_image_attachments,
+    is_task_command,
+    parse_task_text,
     process_message,
+    process_task_command,
     should_process,
+    task_channel_id,
 )
-from app.github_service import GitHubSaveError
+from app.github_service import GitHubIssueError, GitHubSaveError
 from app.models import IncomingAttachment, IncomingMessage
 
 UTC = ZoneInfo("UTC")
@@ -26,6 +30,7 @@ def _make_config(**overrides) -> Config:
         discord_bot_token="t",
         discord_guild_id=111,
         discord_daily_channel_id=222,
+        discord_task_channel_id=None,
         allowed_discord_user_ids=frozenset(),
         github_token="t",
         github_owner="owner",
@@ -290,3 +295,101 @@ async def test_process_message_rolls_back_r2_on_github_failure():
     assert result.success is False
     assert "GitHub保存" in result.reply
     r2_service.delete_objects.assert_called_once_with(["images/2026/07/19/123456789-photo.jpg"])
+
+
+def test_is_task_command_detects_prefix():
+    assert is_task_command("!task 牛乳を買う") is True
+    assert is_task_command("  !task 牛乳を買う  ") is True
+    assert is_task_command("!TASK 牛乳を買う") is True
+    assert is_task_command("!task") is True
+
+
+def test_is_task_command_rejects_non_commands():
+    assert is_task_command("今日は !task について考えた") is False
+    assert is_task_command("!taskfoo 牛乳") is False
+    assert is_task_command("普通の日記") is False
+
+
+def test_parse_task_text_strips_prefix_and_whitespace():
+    assert parse_task_text("!task  牛乳を買う  ") == "牛乳を買う"
+    assert parse_task_text("!task 牛乳を買う\n低脂肪のもの") == "牛乳を買う\n低脂肪のもの"
+    assert parse_task_text("!task") == ""
+
+
+def test_task_channel_id_falls_back_to_daily_channel():
+    assert task_channel_id(_make_config(discord_task_channel_id=None)) == 222
+    assert task_channel_id(_make_config(discord_task_channel_id=333)) == 333
+
+
+def test_task_command_is_excluded_from_diary_saving():
+    config = _make_config()
+    msg = _make_message(content="!task 牛乳を買う")
+    assert should_process(config, msg) is False
+    assert "!task" in describe_rejection(config, msg)
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_creates_issue():
+    config = _make_config()
+    msg = _make_message(content="!task 牛乳を買う")
+    github_service = MagicMock()
+    github_service.create_issue.return_value = MagicMock(
+        number=7, url="https://github.com/owner/repo/issues/7"
+    )
+
+    result = await process_task_command(msg, config, github_service)
+
+    assert result.success is True
+    assert "#7" in result.reply
+    assert "牛乳を買う" in result.reply
+    assert "https://github.com/owner/repo/issues/7" in result.reply
+    task_arg = github_service.create_issue.call_args[0][0]
+    assert task_arg.text == "牛乳を買う"
+    assert task_arg.message_id == 123456789
+    assert task_arg.iso_datetime.endswith("+09:00")
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_returns_usage_when_text_empty():
+    config = _make_config()
+    msg = _make_message(content="!task")
+    github_service = MagicMock()
+
+    result = await process_task_command(msg, config, github_service)
+
+    assert result.success is False
+    assert "内容が空です" in result.reply
+    github_service.create_issue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_reports_failure_stage():
+    config = _make_config()
+    msg = _make_message(content="!task 牛乳を買う")
+    github_service = MagicMock()
+    github_service.create_issue.side_effect = GitHubIssueError("boom")
+
+    result = await process_task_command(msg, config, github_service)
+
+    assert result.success is False
+    assert "GitHub Issue作成" in result.reply
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_ignores_wrong_channel():
+    config = _make_config(discord_task_channel_id=333)
+    msg = _make_message(content="!task 牛乳を買う", channel_id=222)
+    github_service = MagicMock()
+
+    assert await process_task_command(msg, config, github_service) is None
+    github_service.create_issue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_task_command_ignores_disallowed_user():
+    config = _make_config(allowed_discord_user_ids=frozenset({42}))
+    msg = _make_message(content="!task 牛乳を買う", author_id=1)
+    github_service = MagicMock()
+
+    assert await process_task_command(msg, config, github_service) is None
+    github_service.create_issue.assert_not_called()
