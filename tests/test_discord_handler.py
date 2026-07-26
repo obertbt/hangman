@@ -191,6 +191,23 @@ def test_build_success_reply_without_images():
     assert build_success_reply(0) == "✅ ライフログをGitHubへ保存しました"
 
 
+def test_build_success_reply_shows_tags():
+    assert build_success_reply(0, ["運動", "健康"]) == (
+        "✅ ライフログをGitHubへ保存しました\nタグ：#運動 #健康"
+    )
+
+
+def test_build_success_reply_shows_tags_alongside_images():
+    assert build_success_reply(1, ["運動"]) == (
+        "✅ ライフログを保存しました\n文章：GitHub\n画像：Cloudflare R2（1件）\nタグ：#運動"
+    )
+
+
+def test_build_success_reply_omits_the_tag_line_when_untagged():
+    """No tag line is the signal that tagging did not run."""
+    assert "タグ" not in build_success_reply(0, [])
+
+
 def test_build_failure_reply_basic():
     assert build_failure_reply("GitHub保存") == "❌ 保存に失敗しました\n処理段階：GitHub保存"
 
@@ -713,3 +730,32 @@ def test_build_search_reply_fits_in_one_discord_message():
     reply = build_search_reply("あ", None, hits)
     assert len(reply) <= 2000
     assert "ほか" in reply
+
+
+@pytest.mark.asyncio
+async def test_process_message_reports_the_tags_it_applied():
+    config = _make_config(tagging_enabled=True)
+
+    result = await process_message(
+        _make_message(), config, MagicMock(), MagicMock(), _downloader, None, _FakeTagger()
+    )
+
+    assert "タグ：#運動 #健康" in result.reply
+
+
+@pytest.mark.asyncio
+async def test_process_message_reply_has_no_tag_line_when_tagging_fails():
+    config = _make_config(tagging_enabled=True)
+
+    result = await process_message(
+        _make_message(),
+        config,
+        MagicMock(),
+        MagicMock(),
+        _downloader,
+        None,
+        _FakeTagger(RuntimeError("model down")),
+    )
+
+    assert result.success is True
+    assert "タグ" not in result.reply

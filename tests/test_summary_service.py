@@ -130,3 +130,39 @@ def test_claude_summarizer_returns_none_on_refusal():
             )
             is None
         )
+
+
+@pytest.mark.asyncio
+async def test_ollama_summarizer_caps_generation_length():
+    """An unbounded reply can burn the whole tagging timeout."""
+    summarizer = OllamaSummarizer(_make_config(summary_provider="ollama"))
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            return {"message": {"content": "運動"}}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class FakeSession:
+        def post(self, url, json):
+            captured.update(json)
+            return FakeResponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    with patch("app.summary_service.aiohttp.ClientSession", lambda **kwargs: FakeSession()):
+        assert await summarizer.summarize(["朝ラン5km"], SYSTEM_PROMPT, 100, "見出し") == "運動"
+
+    assert captured["options"]["num_predict"] == 100

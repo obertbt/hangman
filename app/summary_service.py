@@ -100,6 +100,11 @@ class OllamaSummarizer(Summarizer):
                 {"role": "user", "content": build_prompt(entries, heading)},
             ],
             "stream": False,
+            # Anything past max_length is discarded by clean_summary, so
+            # capping generation saves the model writing it in the first
+            # place. Tagging asks for a handful of words and would
+            # otherwise wait out a model that decided to explain itself.
+            "options": {"num_predict": max_length},
         }
         timeout = aiohttp.ClientTimeout(total=self._timeout)
         async with aiohttp.ClientSession(timeout=timeout) as session:

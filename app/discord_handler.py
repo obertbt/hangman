@@ -57,7 +57,7 @@ from app.search_index import (
     build_snippet,
     split_terms,
 )
-from app.tagging import generate_tags
+from app.tagging import format_tags, generate_tags
 from app.weather_service import WeatherService
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
@@ -218,14 +218,23 @@ def filter_image_attachments(attachments: list[IncomingAttachment]) -> list[Inco
     return [att for att in attachments if att.content_type in SUPPORTED_CONTENT_TYPES]
 
 
-def build_success_reply(image_count: int) -> str:
+def build_success_reply(image_count: int, tags: list[str] | None = None) -> str:
+    """The reply after a successful save.
+
+    Tags are shown so it is visible at a glance whether tagging ran —
+    without this the only way to tell is to open the file on GitHub.
+    """
     if image_count == 0:
-        return "✅ ライフログをGitHubへ保存しました"
-    return (
-        "✅ ライフログを保存しました\n"
-        "文章：GitHub\n"
-        f"画像：Cloudflare R2（{image_count}件）"
-    )
+        lines = ["✅ ライフログをGitHubへ保存しました"]
+    else:
+        lines = [
+            "✅ ライフログを保存しました",
+            "文章：GitHub",
+            f"画像：Cloudflare R2（{image_count}件）",
+        ]
+    if tags:
+        lines.append(f"タグ：{format_tags(tags)}")
+    return "\n".join(lines)
 
 
 def build_failure_reply(stage: str, detail: str | None = None) -> str:
@@ -333,7 +342,7 @@ async def process_message(
         except Exception:
             logger.exception("検索インデックスの更新に失敗しました: message_id=%s", msg.message_id)
 
-    return ProcessResult(True, build_success_reply(len(uploaded_keys)))
+    return ProcessResult(True, build_success_reply(len(uploaded_keys), tags))
 
 
 async def process_task_command(

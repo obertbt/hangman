@@ -371,7 +371,9 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         report_storage_usage=_parse_bool(env.get("REPORT_STORAGE_USAGE"), True),
         tagging_enabled=tagging_enabled,
         tag_vocabulary=_parse_tag_vocabulary(env.get("TAG_VOCABULARY")),
-        tagging_timeout_seconds=_parse_positive_int(env, "TAGGING_TIMEOUT_SECONDS", 30),
+        # Generous by default: a local Ollama loads the model into RAM on
+        # the first call after a pause, which on its own can take a minute.
+        tagging_timeout_seconds=_parse_positive_int(env, "TAGGING_TIMEOUT_SECONDS", 120),
         search_enabled=_parse_bool(env.get("SEARCH_ENABLED"), False),
         search_index_path=env.get("SEARCH_INDEX_PATH", "").strip() or "data/search.db",
         search_backfill_days=_parse_positive_int(env, "SEARCH_BACKFILL_DAYS", 730),

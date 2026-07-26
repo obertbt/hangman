@@ -356,7 +356,7 @@ def test_load_config_tagging_disabled_by_default():
     config = load_config(env=BASE_ENV, load_dotenv_file=False)
     assert config.tagging_enabled is False
     assert config.tag_vocabulary == DEFAULT_TAG_VOCABULARY
-    assert config.tagging_timeout_seconds == 30
+    assert config.tagging_timeout_seconds == 120
 
 
 def test_load_config_enables_tagging_with_a_provider():
