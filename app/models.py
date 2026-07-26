@@ -46,7 +46,6 @@ class MarkdownEntryData:
     iso_datetime: str
     r2_keys: list[str] = field(default_factory=list)
     weather: str | None = None
-    tags: list[str] = field(default_factory=list)
 
 
 @dataclass

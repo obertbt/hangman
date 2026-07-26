@@ -7,6 +7,7 @@ import pytest
 from app.config import DEFAULT_TAG_VOCABULARY, Config
 from app.discord_handler import (
     AttachmentDownloadError,
+    append_tags_to_reply,
     build_failure_reply,
     build_image_url_reply,
     build_search_reply,
@@ -17,6 +18,7 @@ from app.discord_handler import (
     is_dedicated_task_channel,
     is_task_command,
     is_task_message,
+    LifelogClient,
     notification_channel_id,
     open_search_index,
     parse_task_text,
@@ -28,7 +30,7 @@ from app.discord_handler import (
 )
 from app.github_service import GitHubIssueError, GitHubSaveError
 from app.models import IncomingAttachment, IncomingMessage
-from app.search_index import SearchHit, SearchIndex
+from app.search_index import IndexedEntry, SearchHit, SearchIndex
 
 UTC = ZoneInfo("UTC")
 
@@ -191,21 +193,15 @@ def test_build_success_reply_without_images():
     assert build_success_reply(0) == "✅ ライフログをGitHubへ保存しました"
 
 
-def test_build_success_reply_shows_tags():
-    assert build_success_reply(0, ["運動", "健康"]) == (
+def test_append_tags_to_reply_adds_a_tag_line():
+    assert append_tags_to_reply("✅ ライフログをGitHubへ保存しました", ["運動", "健康"]) == (
         "✅ ライフログをGitHubへ保存しました\nタグ：#運動 #健康"
     )
 
 
-def test_build_success_reply_shows_tags_alongside_images():
-    assert build_success_reply(1, ["運動"]) == (
-        "✅ ライフログを保存しました\n文章：GitHub\n画像：Cloudflare R2（1件）\nタグ：#運動"
-    )
-
-
-def test_build_success_reply_omits_the_tag_line_when_untagged():
+def test_append_tags_to_reply_leaves_an_untagged_reply_alone():
     """No tag line is the signal that tagging did not run."""
-    assert "タグ" not in build_success_reply(0, [])
+    assert append_tags_to_reply("✅ 保存しました", []) == "✅ 保存しました"
 
 
 def test_build_failure_reply_basic():
@@ -599,51 +595,6 @@ async def _downloader(url, max_bytes):
 
 
 @pytest.mark.asyncio
-async def test_process_message_tags_the_entry_when_enabled():
-    config = _make_config(tagging_enabled=True)
-    github_service = MagicMock()
-
-    result = await process_message(
-        _make_message(), config, github_service, MagicMock(), _downloader, None, _FakeTagger()
-    )
-
-    assert result.success is True
-    assert github_service.save_entry.call_args[0][1].tags == ["運動", "健康"]
-
-
-@pytest.mark.asyncio
-async def test_process_message_skips_tagging_when_disabled():
-    config = _make_config(tagging_enabled=False)
-    github_service = MagicMock()
-
-    await process_message(
-        _make_message(), config, github_service, MagicMock(), _downloader, None, _FakeTagger()
-    )
-
-    assert github_service.save_entry.call_args[0][1].tags == []
-
-
-@pytest.mark.asyncio
-async def test_process_message_saves_untagged_when_the_model_fails():
-    """Tagging is a bonus — a model outage must not cost the entry."""
-    config = _make_config(tagging_enabled=True)
-    github_service = MagicMock()
-
-    result = await process_message(
-        _make_message(),
-        config,
-        github_service,
-        MagicMock(),
-        _downloader,
-        None,
-        _FakeTagger(RuntimeError("model down")),
-    )
-
-    assert result.success is True
-    assert github_service.save_entry.call_args[0][1].tags == []
-
-
-@pytest.mark.asyncio
 async def test_process_message_indexes_the_saved_entry():
     config = _make_config()
     index = SearchIndex(":memory:")
@@ -654,7 +605,6 @@ async def test_process_message_indexes_the_saved_entry():
             MagicMock(),
             MagicMock(),
             _downloader,
-            None,
             None,
             index,
         )
@@ -673,7 +623,7 @@ async def test_process_message_does_not_index_a_failed_save():
     index = SearchIndex(":memory:")
     try:
         result = await process_message(
-            _make_message(), config, github_service, MagicMock(), _downloader, None, None, index
+            _make_message(), config, github_service, MagicMock(), _downloader, None, index
         )
         assert result.success is False
         assert index.count() == 0
@@ -689,7 +639,7 @@ async def test_process_message_survives_a_broken_index():
     index.index_entry.side_effect = RuntimeError("disk full")
 
     result = await process_message(
-        _make_message(), config, MagicMock(), MagicMock(), _downloader, None, None, index
+        _make_message(), config, MagicMock(), MagicMock(), _downloader, None, index
     )
 
     assert result.success is True
@@ -732,30 +682,112 @@ def test_build_search_reply_fits_in_one_discord_message():
     assert "ほか" in reply
 
 
+class _StubReply:
+    """Stands in for the bot's own Discord reply, which gets edited."""
+
+    def __init__(self, content="✅ ライフログをGitHubへ保存しました"):
+        self.content = content
+        self.edit_failure = None
+
+    async def edit(self, content):
+        if self.edit_failure:
+            raise self.edit_failure
+        self.content = content
+
+
+def _tagging_client(**config_overrides):
+    """A LifelogClient with Discord's own __init__ bypassed."""
+    client = LifelogClient.__new__(LifelogClient)
+    client.config = _make_config(tagging_enabled=True, **config_overrides)
+    client.github_service = MagicMock()
+    client.github_service.add_tags_to_entry.return_value = True
+    client.summarizer = _FakeTagger()
+    client.search_index = None
+    return client
+
+
 @pytest.mark.asyncio
-async def test_process_message_reports_the_tags_it_applied():
-    config = _make_config(tagging_enabled=True)
+async def test_tag_entry_later_amends_the_file_and_the_reply():
+    client = _tagging_client()
+    reply = _StubReply()
 
-    result = await process_message(
-        _make_message(), config, MagicMock(), MagicMock(), _downloader, None, _FakeTagger()
-    )
+    await LifelogClient._tag_entry_later(client, _make_message(), reply)
 
-    assert "タグ：#運動 #健康" in result.reply
+    dt, message_id, tags = client.github_service.add_tags_to_entry.call_args[0]
+    assert (dt.year, dt.month, dt.day, dt.hour) == (2026, 7, 19, 21)
+    assert message_id == 123456789
+    assert tags == ["運動", "健康"]
+    assert reply.content.endswith("\nタグ：#運動 #健康")
 
 
 @pytest.mark.asyncio
-async def test_process_message_reply_has_no_tag_line_when_tagging_fails():
-    config = _make_config(tagging_enabled=True)
+async def test_tag_entry_later_updates_the_search_index():
+    client = _tagging_client()
+    client.search_index = SearchIndex(":memory:")
+    try:
+        client.search_index.index_entry(
+            IndexedEntry("2026-07-19", "21:35", "今日はホッケーの練習。", message_id="123456789")
+        )
 
-    result = await process_message(
-        _make_message(),
-        config,
-        MagicMock(),
-        MagicMock(),
-        _downloader,
-        None,
-        _FakeTagger(RuntimeError("model down")),
-    )
+        await LifelogClient._tag_entry_later(client, _make_message(), _StubReply())
 
-    assert result.success is True
-    assert "タグ" not in result.reply
+        assert client.search_index.search("", tag="運動")[0].time_str == "21:35"
+    finally:
+        client.search_index.close()
+
+
+@pytest.mark.asyncio
+async def test_tag_entry_later_does_nothing_when_the_model_returns_no_tags():
+    client = _tagging_client()
+    client.summarizer = _FakeTagger("")
+    reply = _StubReply()
+
+    await LifelogClient._tag_entry_later(client, _make_message(), reply)
+
+    client.github_service.add_tags_to_entry.assert_not_called()
+    assert "タグ" not in reply.content
+
+
+@pytest.mark.asyncio
+async def test_tag_entry_later_survives_a_failing_model():
+    """The entry is already saved; losing its tags must cost nothing else."""
+    client = _tagging_client()
+    client.summarizer = _FakeTagger(RuntimeError("model down"))
+
+    await LifelogClient._tag_entry_later(client, _make_message(), _StubReply())
+
+    client.github_service.add_tags_to_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tag_entry_later_survives_a_github_failure():
+    client = _tagging_client()
+    client.github_service.add_tags_to_entry.side_effect = GitHubSaveError("boom")
+    reply = _StubReply()
+
+    await LifelogClient._tag_entry_later(client, _make_message(), reply)
+
+    assert "タグ" not in reply.content
+
+
+@pytest.mark.asyncio
+async def test_tag_entry_later_leaves_the_reply_alone_when_nothing_changed():
+    client = _tagging_client()
+    client.github_service.add_tags_to_entry.return_value = False
+    reply = _StubReply()
+
+    await LifelogClient._tag_entry_later(client, _make_message(), reply)
+
+    assert "タグ" not in reply.content
+
+
+@pytest.mark.asyncio
+async def test_tag_entry_later_keeps_the_tags_when_the_reply_edit_fails():
+    """The edit is cosmetic; the commit that matters already happened."""
+    client = _tagging_client()
+    reply = _StubReply()
+    reply.edit_failure = RuntimeError("message deleted")
+
+    await LifelogClient._tag_entry_later(client, _make_message(), reply)
+
+    client.github_service.add_tags_to_entry.assert_called_once()

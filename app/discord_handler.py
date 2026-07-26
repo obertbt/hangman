@@ -218,23 +218,23 @@ def filter_image_attachments(attachments: list[IncomingAttachment]) -> list[Inco
     return [att for att in attachments if att.content_type in SUPPORTED_CONTENT_TYPES]
 
 
-def build_success_reply(image_count: int, tags: list[str] | None = None) -> str:
-    """The reply after a successful save.
-
-    Tags are shown so it is visible at a glance whether tagging ran —
-    without this the only way to tell is to open the file on GitHub.
-    """
+def build_success_reply(image_count: int) -> str:
     if image_count == 0:
-        lines = ["✅ ライフログをGitHubへ保存しました"]
-    else:
-        lines = [
-            "✅ ライフログを保存しました",
-            "文章：GitHub",
-            f"画像：Cloudflare R2（{image_count}件）",
-        ]
-    if tags:
-        lines.append(f"タグ：{format_tags(tags)}")
-    return "\n".join(lines)
+        return "✅ ライフログをGitHubへ保存しました"
+    return (
+        "✅ ライフログを保存しました\n"
+        "文章：GitHub\n"
+        f"画像：Cloudflare R2（{image_count}件）"
+    )
+
+
+def append_tags_to_reply(reply: str, tags: list[str]) -> str:
+    """The reply is edited once tags arrive, so it is visible at a glance
+    whether tagging ran — otherwise the only way to tell is to open the
+    file on GitHub."""
+    if not tags:
+        return reply
+    return f"{reply}\nタグ：{format_tags(tags)}"
 
 
 def build_failure_reply(stage: str, detail: str | None = None) -> str:
@@ -251,7 +251,6 @@ async def process_message(
     r2_service: R2Service,
     downloader: Downloader,
     weather_service: WeatherService | None = None,
-    summarizer: Summarizer | None = None,
     search_index: SearchIndex | None = None,
 ) -> ProcessResult | None:
     """Core orchestration, independent of discord.py.
@@ -293,13 +292,9 @@ async def process_message(
     # Best effort: a weather lookup must never block saving the entry.
     weather = await weather_service.current_weather() if weather_service else None
 
-    # Same for tags — generate_tags swallows its own failures and returns [].
-    tags: list[str] = []
-    if config.tagging_enabled and summarizer is not None:
-        tags = await generate_tags(
-            summarizer, msg.content, config.tag_vocabulary, config.tagging_timeout_seconds
-        )
-
+    # Tags are deliberately not generated here. Waiting on an LLM before
+    # the save would leave the entry unwritten — and the user without a
+    # reply — for as long as the model takes; they are added afterwards.
     entry = MarkdownEntryData(
         time_str=f"{jst_dt:%H:%M}",
         content=msg.content,
@@ -309,7 +304,6 @@ async def process_message(
         iso_datetime=jst_dt.isoformat(),
         r2_keys=uploaded_keys,
         weather=weather,
-        tags=tags,
     )
 
     try:
@@ -334,7 +328,6 @@ async def process_message(
                     time_str=entry.time_str,
                     body=msg.content,
                     author=msg.author_display_name,
-                    tags=tags,
                     image_count=len(uploaded_keys),
                     message_id=str(msg.message_id),
                 ),
@@ -342,7 +335,7 @@ async def process_message(
         except Exception:
             logger.exception("検索インデックスの更新に失敗しました: message_id=%s", msg.message_id)
 
-    return ProcessResult(True, build_success_reply(len(uploaded_keys), tags))
+    return ProcessResult(True, build_success_reply(len(uploaded_keys)))
 
 
 async def process_task_command(
@@ -508,6 +501,7 @@ class LifelogClient(discord.Client):
         self._web_server = None
         self._web_task: asyncio.Task | None = None
         self._backfill_task: asyncio.Task | None = None
+        self._background_tasks: set[asyncio.Task] = set()
 
     def _register_commands(self) -> None:
         guild = discord.Object(id=self.config.discord_guild_id)
@@ -770,6 +764,8 @@ class LifelogClient(discord.Client):
             self._web_task.cancel()
         if self._backfill_task is not None:
             self._backfill_task.cancel()
+        for task in list(self._background_tasks):
+            task.cancel()
         if self.search_index is not None:
             self.search_index.close()
         if self._http_session is not None:
@@ -883,7 +879,6 @@ class LifelogClient(discord.Client):
                     self.r2_service,
                     self._download_attachment,
                     self.weather_service,
-                    self.summarizer,
                     self.search_index,
                 )
         except Exception:
@@ -892,7 +887,70 @@ class LifelogClient(discord.Client):
 
         if result is None:
             return
-        await message.reply(result.reply)
+        reply = await message.reply(result.reply)
+
+        if result.success and self.config.tagging_enabled and not is_task_message(
+            self.config, incoming
+        ):
+            self._spawn(self._tag_entry_later(incoming, reply))
+
+    def _spawn(self, coro) -> None:
+        """Run a follow-up in the background, keeping a strong reference.
+
+        asyncio only holds a weak reference to running tasks, so without
+        this the garbage collector can cancel one mid-flight.
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _tag_entry_later(
+        self, msg: IncomingMessage, reply: discord.Message | None
+    ) -> None:
+        """Tag an entry once it is safely saved.
+
+        A local model can take a minute to answer, which is far too long
+        to hold up the save and the reply. So the entry goes in untagged,
+        and this amends it afterwards: a second commit, the search index
+        updated, and the reply edited to show what was applied.
+        """
+        tags = await generate_tags(
+            self.summarizer,
+            msg.content,
+            self.config.tag_vocabulary,
+            self.config.tagging_timeout_seconds,
+        )
+        if not tags:
+            return
+
+        jst_dt = msg.created_at.astimezone(ZoneInfo(self.config.timezone))
+        try:
+            changed = await asyncio.to_thread(
+                self.github_service.add_tags_to_entry, jst_dt, msg.message_id, tags
+            )
+        except Exception:
+            logger.exception("タグの保存に失敗しました: message_id=%s", msg.message_id)
+            return
+        if not changed:
+            return
+        logger.info(
+            "タグを追加しました: message_id=%s タグ=%s", msg.message_id, " ".join(tags)
+        )
+
+        if self.search_index is not None:
+            try:
+                await asyncio.to_thread(
+                    self.search_index.set_tags, str(msg.message_id), tags
+                )
+            except Exception:
+                logger.exception("検索インデックスへのタグ反映に失敗しました")
+
+        if reply is not None:
+            try:
+                await reply.edit(content=append_tags_to_reply(reply.content, tags))
+            except Exception:
+                # The tags are saved; only the cosmetic edit failed.
+                logger.warning("返信へのタグの追記に失敗しました", exc_info=True)
 
     async def _handle_image_command(self, interaction: discord.Interaction, key: str) -> None:
         # The signed URL is a credential, so every response stays ephemeral.

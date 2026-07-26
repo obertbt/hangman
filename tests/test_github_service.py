@@ -17,6 +17,7 @@ from app.github_service import (
     build_issue_title,
     count_entry_headings,
     extract_entry_bodies,
+    insert_tag_line,
 )
 from app.diary import parse_daily_markdown
 from app.models import MarkdownEntryData, TaskData
@@ -441,19 +442,91 @@ def test_save_summary_raises_friendly_error_on_github_failure():
         service.save_summary("summary/2026-07.md", "# 2026年7月", "Add monthly summary")
 
 
-def test_build_entry_markdown_with_tags():
-    md = build_entry_markdown(_make_entry(tags=["運動", "健康"]))
-    assert "- タグ: #運動 #健康" in md
+TAGGABLE = """## 09:00
+
+朝ラン5km
+
+- Discord投稿者: tomoya
+- DiscordメッセージID: 111
+- Discord投稿日時: 2026-07-26T09:00:00+09:00
+
+## 20:00
+
+買い物
+
+- Discord投稿者: tomoya
+- DiscordメッセージID: 222
+- Discord投稿日時: 2026-07-26T20:00:00+09:00
+"""
 
 
-def test_build_entry_markdown_omits_the_tag_line_when_untagged():
-    assert "- タグ:" not in build_entry_markdown(_make_entry())
+def test_insert_tag_line_targets_the_right_entry():
+    updated = insert_tag_line(TAGGABLE, 222, ["買い物"])
+    entries = parse_daily_markdown(updated)
+    assert entries[0].tags == []
+    assert entries[1].tags == ["買い物"]
 
 
-def test_tags_round_trip_through_the_parser():
-    """What github_service writes, diary.py must be able to read back."""
-    md = build_entry_markdown(_make_entry(tags=["運動"], r2_keys=["images/2026/07/19/1-a.png"]))
-    entry = parse_daily_markdown(md)[0]
-    assert entry.tags == ["運動"]
-    assert entry.body == "今日はホッケーの練習。"
-    assert entry.image_keys == ["images/2026/07/19/1-a.png"]
+def test_insert_tag_line_keeps_the_body_intact():
+    """A tag must never be mistaken for diary text."""
+    entry = parse_daily_markdown(insert_tag_line(TAGGABLE, 111, ["運動"]))[0]
+    assert entry.body == "朝ラン5km"
+
+
+def test_insert_tag_line_ignores_an_entry_that_is_already_tagged():
+    once = insert_tag_line(TAGGABLE, 111, ["運動"])
+    assert insert_tag_line(once, 111, ["健康"]) is None
+
+
+def test_insert_tag_line_ignores_an_unknown_message():
+    assert insert_tag_line(TAGGABLE, 999, ["運動"]) is None
+
+
+def test_insert_tag_line_ignores_an_empty_tag_list():
+    assert insert_tag_line(TAGGABLE, 111, []) is None
+
+
+def test_add_tags_to_entry_commits_the_updated_file():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile(TAGGABLE, sha="sha-3")
+    service = _service_with_repo(repo)
+
+    changed = service.add_tags_to_entry(datetime(2026, 7, 26, 9, 0, tzinfo=JST), 111, ["運動"])
+
+    assert changed is True
+    args, kwargs = repo.update_file.call_args
+    assert args[0] == "daily/2026/07/2026-07-26.md"
+    assert args[1] == "Add tags for 2026-07-26 09:00"
+    assert "- タグ: #運動" in args[2]
+    assert args[3] == "sha-3"
+    assert kwargs["branch"] == "main"
+
+
+def test_add_tags_to_entry_skips_the_commit_when_nothing_changes():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile(TAGGABLE, sha="sha-3")
+    service = _service_with_repo(repo)
+
+    assert service.add_tags_to_entry(datetime(2026, 7, 26, tzinfo=JST), 999, ["運動"]) is False
+    repo.update_file.assert_not_called()
+
+
+def test_add_tags_to_entry_returns_false_when_the_day_is_missing():
+    repo = MagicMock()
+    repo.get_contents.side_effect = UnknownObjectException(404, {"message": "Not Found"})
+    service = _service_with_repo(repo)
+
+    assert service.add_tags_to_entry(datetime(2026, 7, 26, tzinfo=JST), 111, ["運動"]) is False
+
+
+def test_add_tags_to_entry_retries_on_conflict():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile(TAGGABLE, sha="sha-3")
+    repo.update_file.side_effect = [
+        GithubException(409, {"message": "Conflict"}),
+        None,
+    ]
+    service = _service_with_repo(repo)
+
+    assert service.add_tags_to_entry(datetime(2026, 7, 26, tzinfo=JST), 111, ["運動"]) is True
+    assert repo.update_file.call_count == 2

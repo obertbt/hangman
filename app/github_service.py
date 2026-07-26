@@ -19,6 +19,8 @@ MAX_ISSUE_TITLE_LENGTH = 120
 
 _ENTRY_HEADING_RE = re.compile(r"^## \d{2}:\d{2}\s*$", re.MULTILINE)
 
+TAG_LINE_PREFIX = "- タグ:"
+
 
 def count_entry_headings(markdown: str) -> int:
     """Number of `## HH:MM` entries in a daily Markdown file."""
@@ -60,8 +62,6 @@ def build_entry_markdown(entry: MarkdownEntryData) -> str:
     ]
     # Must stay inside the metadata block (after 投稿者) so the parser
     # does not mistake it for diary text.
-    if entry.tags:
-        lines.append(f"- タグ: {format_tags(entry.tags)}")
     if entry.weather:
         lines.append(f"- 天気: {entry.weather}")
     if entry.r2_keys:
@@ -73,6 +73,32 @@ def build_entry_markdown(entry: MarkdownEntryData) -> str:
 
 def build_commit_message(dt: datetime, time_str: str) -> str:
     return f"Add Discord log for {dt:%Y-%m-%d} {time_str}"
+
+
+def insert_tag_line(markdown: str, message_id: int, tags: list[str]) -> str | None:
+    """Add a `- タグ:` line to the entry with this Discord message ID.
+
+    Returns None when there is nothing to do — the entry is not in this
+    file, or it already carries tags — so the caller can skip the commit.
+    """
+    if not tags:
+        return None
+
+    target = f"- DiscordメッセージID: {message_id}"
+    lines = markdown.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != target:
+            continue
+        # Walk the rest of this entry: a tag line already there means a
+        # retry or a hand edit, and must not be duplicated.
+        for following in lines[index + 1 :]:
+            if following.startswith("## "):
+                break
+            if following.startswith(TAG_LINE_PREFIX):
+                return None
+        lines.insert(index + 1, f"{TAG_LINE_PREFIX} {format_tags(tags)}")
+        return "\n".join(lines) + "\n"
+    return None
 
 
 def build_issue_title(task_text: str) -> str:
@@ -143,6 +169,43 @@ class GitHubService:
                     self._sleep_func(INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1)))
                     continue
                 raise GitHubSaveError(f"GitHubへの保存に失敗しました: {exc}") from exc
+
+    def add_tags_to_entry(self, dt: datetime, message_id: int, tags: list[str]) -> bool:
+        """Add tags to an entry that is already saved.
+
+        Tagging waits on an LLM, so it runs after the entry is safely in
+        the repository rather than in front of it. Returns whether the
+        file actually changed.
+        """
+        path = build_daily_path(dt)
+        branch = self._config.github_branch
+        repo = self._repo()
+
+        attempt = 0
+        while True:
+            try:
+                existing = repo.get_contents(path, ref=branch)
+                updated = insert_tag_line(
+                    existing.decoded_content.decode("utf-8"), message_id, tags
+                )
+                if updated is None:
+                    return False
+                repo.update_file(
+                    path,
+                    f"Add tags for {dt:%Y-%m-%d} {dt:%H:%M}",
+                    updated,
+                    existing.sha,
+                    branch=branch,
+                )
+                return True
+            except UnknownObjectException:
+                return False
+            except GithubException as exc:
+                attempt += 1
+                if exc.status == 409 and attempt < MAX_RETRIES:
+                    self._sleep_func(INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+                    continue
+                raise GitHubSaveError(f"タグの保存に失敗しました: {exc}") from exc
 
     def create_issue(self, task: TaskData) -> CreatedIssue:
         title = build_issue_title(task.text)

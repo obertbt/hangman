@@ -162,6 +162,17 @@ class SearchIndex:
             self._write(entry)
             self._connection.commit()
 
+    def set_tags(self, message_id: str, tags: list[str]) -> bool:
+        """Attach tags to an already-indexed entry, as tagging runs after
+        the entry is saved. Returns whether a row was found."""
+        with self._lock:
+            cursor = self._connection.execute(
+                "UPDATE entries SET tags = ? WHERE entry_key = ?",
+                (TAG_SEPARATOR.join(tags), f"msg:{message_id}"),
+            )
+            self._connection.commit()
+        return cursor.rowcount > 0
+
     def replace_day(self, date_str: str, entries: Iterable[IndexedEntry]) -> int:
         """Re-index one day, dropping whatever was stored for it before."""
         with self._lock:

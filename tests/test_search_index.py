@@ -166,3 +166,23 @@ def test_index_survives_reopening(tmp_path):
     second = SearchIndex(path)
     assert second.count() == 2
     second.close()
+
+
+def test_set_tags_attaches_tags_after_the_fact(index):
+    """Tagging runs after the entry is saved, so it lands as an update."""
+    index.index_entry(IndexedEntry("2026-07-26", "09:00", "朝ラン5km", message_id="111"))
+
+    assert index.set_tags("111", ["運動", "健康"]) is True
+
+    hit = index.search("ラン")[0]
+    assert hit.tags == ["運動", "健康"]
+
+
+def test_set_tags_makes_the_entry_findable_by_tag(index):
+    index.index_entry(IndexedEntry("2026-07-26", "09:00", "朝ラン5km", message_id="111"))
+    index.set_tags("111", ["運動"])
+    assert [hit.time_str for hit in index.search("", tag="運動")] == ["09:00"]
+
+
+def test_set_tags_reports_an_unknown_message(index):
+    assert index.set_tags("999", ["運動"]) is False
