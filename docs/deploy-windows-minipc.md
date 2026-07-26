@@ -258,17 +258,28 @@ Get-Content logs\bot.log -Wait -Tail 10 -Encoding UTF8  # リアルタイム表�
 まず、動いているPythonの数を確認します。
 
 ```powershell
-Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime
+Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, SessionId, StartTime
 ```
 
-**1つだけなら正常**です。2つ以上表示されたら、いったん全部止めてからタスクだけを起動し直します。
+**1つだけなら正常**です。`SessionId` が **0** のものがタスクスケジューラ起動分、**1以上**が手動起動分です。
+
+2つ以上表示されたら、いったん全部止めてからタスクだけを起動し直します。
+
+> ⚠️ **この操作はPowerShellを「管理者として実行」で開いてください。** タスクスケジューラが起動したBotはセッション0で動いているため、通常のPowerShellからは「アクセスが拒否されました」となり停止できません。
 
 ```powershell
 Stop-ScheduledTask -TaskName HearthLifelogBot
+Start-Sleep -Seconds 3
 Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
-そのうえで、タスクスケジューラで「実行する」を選び、再度上のコマンドで1つだけになったことを確認してください。
+何も残っていないことを確認します。
+
+```powershell
+Get-Process python -ErrorAction SilentlyContinue
+```
+
+そのうえで、タスクスケジューラで「実行する」を選び、1つだけになったことを確認してください。
 
 ログ上では、`Logged in as ...` の行が短い間隔で2回出ていたら二重起動を疑ってください。
 
@@ -308,6 +319,7 @@ Windows Updateの自動再起動でBotが止まることがありますが、**�
 | 朝の通知が来ない | PCがスリープしていた可能性があります。手順2の `powercfg` を再確認してください |
 | 投稿が二重に保存される | Botが2つ動いています（手動起動とタスクの併存など）。下記「二重起動の確認と解消」を参照してください |
 | ログが文字化けする（`繝ｭ繧ｰ...`） | `Get-Content` に `-Encoding UTF8` を付け忘れています。ファイル自体は正常です |
+| `Stop-Process` で「アクセスが拒否されました」 | タスクスケジューラ起動のBotはセッション0で動くため、通常のPowerShellでは停止できません。PowerShellを**管理者として実行**してください |
 | 起動時に「設定エラー: 必須の環境変数が…」 | `.env` の記入漏れです。表示された変数名を確認してください |
 
 ---
