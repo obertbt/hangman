@@ -277,7 +277,7 @@ Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, SessionId, 
 Select-String -Path logs\bot.log -Pattern "起動しました" -Encoding UTF8 | Select-Object -Last 5
 ```
 
-> 💡 現在のBotは**二重起動を自動で拒否します**。2つ目を起動しようとすると、ログに `Botは既に起動しています（ロックファイル: data\\bot.lock）` と出て終了します。起動スクリプトも、開始前に取り残されたBotがいれば停止します。
+> 💡 現在のBotは**二重起動を自動で拒否します**。2つ目を起動しようとすると、ログに `Botは既に起動しています（ロックファイル: data\bot.lock）` と出て終了します。起動スクリプトも、開始前に取り残されたBotがいれば停止します。
 
 本当に二重起動していた場合は、いったん全部止めてからタスクだけを起動し直します。
 
