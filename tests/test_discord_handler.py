@@ -9,6 +9,7 @@ from app.discord_handler import (
     AttachmentDownloadError,
     build_failure_reply,
     build_success_reply,
+    describe_rejection,
     filter_image_attachments,
     process_message,
     should_process,
@@ -91,6 +92,37 @@ def test_should_process_allows_valid_message():
     config = _make_config()
     msg = _make_message()
     assert should_process(config, msg) is True
+
+
+def test_describe_rejection_returns_none_for_valid_message():
+    assert describe_rejection(_make_config(), _make_message()) is None
+
+
+def test_describe_rejection_reports_wrong_channel_with_both_ids():
+    config = _make_config()
+    reason = describe_rejection(config, _make_message(channel_id=999))
+    assert "999" in reason
+    assert "222" in reason
+    assert "チャンネル" in reason
+
+
+def test_describe_rejection_reports_wrong_guild_with_both_ids():
+    config = _make_config()
+    reason = describe_rejection(config, _make_message(guild_id=999))
+    assert "999" in reason
+    assert "111" in reason
+    assert "サーバー" in reason
+
+
+def test_describe_rejection_reports_disallowed_user():
+    config = _make_config(allowed_discord_user_ids=frozenset({42}))
+    reason = describe_rejection(config, _make_message(author_id=1))
+    assert "ユーザー" in reason
+
+
+def test_describe_rejection_mentions_message_content_intent_when_empty():
+    reason = describe_rejection(_make_config(), _make_message(content="", attachments=[]))
+    assert "Message Content Intent" in reason
 
 
 def test_filter_image_attachments_keeps_only_supported_types():

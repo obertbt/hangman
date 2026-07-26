@@ -38,18 +38,40 @@ class AttachmentDownloadError(Exception):
     pass
 
 
-def should_process(config: Config, msg: IncomingMessage) -> bool:
+def describe_rejection(config: Config, msg: IncomingMessage) -> str | None:
+    """Return why this message is ignored, or None if it should be processed.
+
+    The reason is logged so that a silently-ignored post (wrong channel ID,
+    missing Message Content Intent, ...) can be diagnosed from the console.
+    """
     if msg.author_is_bot:
-        return False
+        return "Botの投稿のため無視しました"
     if msg.guild_id != config.discord_guild_id:
-        return False
+        return (
+            f"対象外のサーバーです（受信: {msg.guild_id} / 設定 DISCORD_GUILD_ID: "
+            f"{config.discord_guild_id}）"
+        )
     if msg.channel_id != config.discord_daily_channel_id:
-        return False
+        return (
+            f"対象外のチャンネルです（受信: {msg.channel_id} / 設定 "
+            f"DISCORD_DAILY_CHANNEL_ID: {config.discord_daily_channel_id}）"
+        )
     if not is_user_allowed(config, msg.author_id):
-        return False
+        return (
+            f"許可されていないユーザーです（受信: {msg.author_id} / 設定 "
+            f"ALLOWED_DISCORD_USER_IDS: {sorted(config.allowed_discord_user_ids)}）"
+        )
     if not msg.content.strip() and not msg.attachments:
-        return False
-    return True
+        return (
+            "本文も添付ファイルもありません。"
+            "本文を書いたのにこの表示が出る場合は、Discord Developer Portalの "
+            "Bot設定で Message Content Intent が有効か確認してください"
+        )
+    return None
+
+
+def should_process(config: Config, msg: IncomingMessage) -> bool:
+    return describe_rejection(config, msg) is None
 
 
 def filter_image_attachments(attachments: list[IncomingAttachment]) -> list[IncomingAttachment]:
@@ -84,7 +106,9 @@ async def process_message(
 
     Returns None if the message should be ignored entirely (no reply).
     """
-    if not should_process(config, msg):
+    rejection = describe_rejection(config, msg)
+    if rejection is not None:
+        logger.info("投稿を無視しました: message_id=%s 理由=%s", msg.message_id, rejection)
         return None
 
     jst = ZoneInfo(config.timezone)
@@ -185,10 +209,40 @@ class LifelogClient(discord.Client):
 
     async def on_ready(self):
         logger.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "?")
+        logger.info(
+            "監視対象: サーバーID=%s / チャンネルID=%s",
+            self.config.discord_guild_id,
+            self.config.discord_daily_channel_id,
+        )
+        guild = self.get_guild(self.config.discord_guild_id)
+        if guild is None:
+            logger.warning(
+                "設定された DISCORD_GUILD_ID のサーバーが見つかりません。"
+                "IDが正しいか、Botがそのサーバーに参加しているか確認してください。"
+            )
+        else:
+            channel = guild.get_channel(self.config.discord_daily_channel_id)
+            if channel is None:
+                logger.warning(
+                    "サーバー「%s」内に DISCORD_DAILY_CHANNEL_ID のチャンネルが見つかりません。"
+                    "IDが正しいか、BotにView Channel権限があるか確認してください。",
+                    guild.name,
+                )
+            else:
+                logger.info("監視チャンネルを確認しました: #%s（%s）", channel.name, guild.name)
 
     async def on_message(self, message: discord.Message) -> None:
         if self.user is not None and message.author.id == self.user.id:
             return
+
+        logger.info(
+            "メッセージ受信: guild=%s channel=%s author=%s 本文の長さ=%s 添付=%s件",
+            message.guild.id if message.guild else None,
+            message.channel.id,
+            message.author.id,
+            len(message.content or ""),
+            len(message.attachments),
+        )
 
         incoming = to_incoming_message(message)
         try:
