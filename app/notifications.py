@@ -33,11 +33,16 @@ def build_morning_message(
     return "\n".join(lines)
 
 
-def build_evening_message(dt: datetime, entry_count: int) -> str:
+def build_evening_message(
+    dt: datetime, entry_count: int, summary: str | None = None
+) -> str:
     header = f"🌙 今日のライフログ（{dt:%Y-%m-%d}）"
     if entry_count == 0:
         return (
             f"{header}\n"
             "まだ今日の記録がありません。ひとことだけでも残しておきませんか？"
         )
-    return f"{header}\n今日は{entry_count}件の記録がありました。おつかれさまでした。"
+    message = f"{header}\n今日は{entry_count}件の記録がありました。おつかれさまでした。"
+    if summary:
+        message += f"\n\n📝 今日のまとめ\n{summary}"
+    return message

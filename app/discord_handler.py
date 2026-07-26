@@ -19,7 +19,13 @@ import discord
 from discord.ext import tasks
 
 from app.config import Config, is_user_allowed
-from app.github_service import GitHubSaveError, GitHubService, build_issue_title
+from app.github_service import (
+    GitHubSaveError,
+    GitHubService,
+    build_issue_title,
+    count_entry_headings,
+    extract_entry_bodies,
+)
 from app.models import (
     IncomingAttachment,
     IncomingMessage,
@@ -28,6 +34,7 @@ from app.models import (
     TaskData,
 )
 from app.notifications import MAX_LISTED_ISSUES, build_evening_message, build_morning_message
+from app.summary_service import Summarizer, create_summarizer, summarize_entries
 from app.r2_service import (
     SUPPORTED_CONTENT_TYPES,
     R2Service,
@@ -315,12 +322,14 @@ class LifelogClient(discord.Client):
         config: Config,
         github_service: GitHubService,
         r2_service: R2Service,
+        summarizer: Summarizer | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.config = config
         self.github_service = github_service
         self.r2_service = r2_service
+        self.summarizer = summarizer if summarizer is not None else create_summarizer(config)
         self._http_session: aiohttp.ClientSession | None = None
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
@@ -365,6 +374,16 @@ class LifelogClient(discord.Client):
             loop.start()
             self._notification_loops.append(loop)
             logger.info("%sの定時通知を %02d:%02d に設定しました", label, at_time.hour, at_time.minute)
+        if self.config.summary_provider == "ollama":
+            logger.info(
+                "夜の要約: ollama（モデル: %s / %s）",
+                self.config.ollama_model,
+                self.config.ollama_url,
+            )
+        elif self.config.summary_provider == "claude":
+            logger.info("夜の要約: Claude API（モデル: %s）", self.config.anthropic_model)
+        else:
+            logger.info("夜の要約は無効です（SUMMARY_PROVIDER=none）")
 
     async def close(self) -> None:
         for loop in self._notification_loops:
@@ -412,12 +431,20 @@ class LifelogClient(discord.Client):
             return
         now = datetime.now(ZoneInfo(self.config.timezone))
         try:
-            count = await asyncio.to_thread(self.github_service.count_entries_for_date, now)
+            markdown = await asyncio.to_thread(self.github_service.fetch_daily_markdown, now)
         except Exception:
-            logger.exception("夜の通知用の記録件数の取得に失敗しました")
+            logger.exception("夜の通知用の日記の取得に失敗しました")
             return
-        await channel.send(build_evening_message(now, count))
-        logger.info("夜の定時通知を送信しました: 記録%s件", count)
+
+        count = count_entry_headings(markdown) if markdown else 0
+        # A failed summary must not cost the user the notification itself.
+        summary = await summarize_entries(
+            self.summarizer, extract_entry_bodies(markdown) if markdown else []
+        )
+        await channel.send(build_evening_message(now, count, summary))
+        logger.info(
+            "夜の定時通知を送信しました: 記録%s件 要約=%s", count, "あり" if summary else "なし"
+        )
 
     async def on_ready(self):
         logger.info("Logged in as %s (ID: %s)", self.user, self.user.id if self.user else "?")

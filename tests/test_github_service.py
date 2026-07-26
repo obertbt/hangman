@@ -16,6 +16,7 @@ from app.github_service import (
     build_issue_body,
     build_issue_title,
     count_entry_headings,
+    extract_entry_bodies,
 )
 from app.models import MarkdownEntryData, TaskData
 
@@ -290,3 +291,61 @@ def test_list_open_issues_wraps_api_errors():
     service = _service_with_repo(repo)
     with pytest.raises(GitHubIssueError):
         service.list_open_issues(limit=5)
+
+
+ENTRY_MARKDOWN = """## 09:00
+
+朝ランを5km走った
+
+- Discord投稿者: tomoya
+- DiscordユーザーID: 999
+- DiscordメッセージID: 1
+- Discord投稿日時: 2026-07-26T09:00:00+09:00
+
+## 21:35
+
+夕方に買い物へ行った
+牛乳と卵を買った
+
+- Discord投稿者: tomoya
+- DiscordユーザーID: 999
+- DiscordメッセージID: 2
+- Discord投稿日時: 2026-07-26T21:35:00+09:00
+- 添付ファイル:
+  - `images/2026/07/26/2-photo.jpg`
+"""
+
+
+def test_extract_entry_bodies_returns_only_user_text():
+    bodies = extract_entry_bodies(ENTRY_MARKDOWN)
+    assert bodies == ["朝ランを5km走った", "夕方に買い物へ行った\n牛乳と卵を買った"]
+
+
+def test_extract_entry_bodies_excludes_metadata_and_r2_keys():
+    joined = "\n".join(extract_entry_bodies(ENTRY_MARKDOWN))
+    assert "Discord投稿者" not in joined
+    assert "images/2026" not in joined
+    assert "DiscordメッセージID" not in joined
+
+
+def test_extract_entry_bodies_skips_entries_without_text():
+    markdown = "## 09:00\n\n- Discord投稿者: tomoya\n"
+    assert extract_entry_bodies(markdown) == []
+
+
+def test_extract_entry_bodies_handles_empty_file():
+    assert extract_entry_bodies("") == []
+
+
+def test_fetch_daily_markdown_returns_none_when_missing():
+    repo = MagicMock()
+    repo.get_contents.side_effect = UnknownObjectException(404, {"message": "Not Found"})
+    service = _service_with_repo(repo)
+    assert service.fetch_daily_markdown(datetime(2026, 7, 26, tzinfo=JST)) is None
+
+
+def test_fetch_daily_markdown_returns_text():
+    repo = MagicMock()
+    repo.get_contents.return_value = FakeContentFile(ENTRY_MARKDOWN)
+    service = _service_with_repo(repo)
+    assert service.fetch_daily_markdown(datetime(2026, 7, 26, tzinfo=JST)) == ENTRY_MARKDOWN

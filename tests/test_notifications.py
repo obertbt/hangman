@@ -49,3 +49,20 @@ def test_build_evening_message_with_entries():
 def test_build_evening_message_without_entries():
     message = build_evening_message(DT, 0)
     assert "まだ今日の記録がありません" in message
+
+
+def test_build_evening_message_appends_summary():
+    message = build_evening_message(DT, 3, summary="走って買い物をした一日。")
+    assert "今日は3件の記録がありました" in message
+    assert "📝 今日のまとめ" in message
+    assert "走って買い物をした一日。" in message
+
+
+def test_build_evening_message_omits_summary_section_when_absent():
+    assert "今日のまとめ" not in build_evening_message(DT, 3, summary=None)
+
+
+def test_build_evening_message_ignores_summary_when_no_entries():
+    message = build_evening_message(DT, 0, summary="使われないはずの要約")
+    assert "まだ今日の記録がありません" in message
+    assert "使われないはずの要約" not in message

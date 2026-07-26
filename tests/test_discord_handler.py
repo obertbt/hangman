@@ -51,6 +51,12 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        summary_provider="none",
+        summary_timeout_seconds=180,
+        ollama_url="http://localhost:11434",
+        ollama_model="qwen2.5:7b",
+        anthropic_api_key=None,
+        anthropic_model="claude-opus-5",
     )
     defaults.update(overrides)
     return Config(**defaults)

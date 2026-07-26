@@ -132,6 +132,45 @@ def test_load_config_rejects_invalid_log_numbers(key, value):
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_summary_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.summary_provider == "none"
+    assert config.ollama_url == "http://localhost:11434"
+    assert config.summary_timeout_seconds == 180
+
+
+def test_load_config_parses_ollama_summary_settings():
+    env = dict(
+        BASE_ENV,
+        SUMMARY_PROVIDER="ollama",
+        OLLAMA_MODEL="qwen2.5:7b",
+        SUMMARY_TIMEOUT_SECONDS="60",
+    )
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.summary_provider == "ollama"
+    assert config.ollama_model == "qwen2.5:7b"
+    assert config.summary_timeout_seconds == 60
+
+
+def test_load_config_rejects_unknown_summary_provider():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="gpt")
+    with pytest.raises(ConfigError, match="SUMMARY_PROVIDER"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_requires_api_key_for_claude_provider():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="claude")
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_accepts_claude_provider_with_api_key():
+    env = dict(BASE_ENV, SUMMARY_PROVIDER="claude", ANTHROPIC_API_KEY="sk-test")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.summary_provider == "claude"
+    assert config.anthropic_model == "claude-opus-5"
+
+
 def test_load_config_rejects_unknown_timezone():
     env = dict(BASE_ENV, TIMEZONE="Not/AZone")
     with pytest.raises(ConfigError, match="tzdata"):
@@ -169,6 +208,12 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        summary_provider="none",
+        summary_timeout_seconds=180,
+        ollama_url="http://localhost:11434",
+        ollama_model="qwen2.5:7b",
+        anthropic_api_key=None,
+        anthropic_model="claude-opus-5",
     )
     defaults.update(overrides)
     return Config(**defaults)

@@ -15,11 +15,44 @@ INITIAL_BACKOFF_SECONDS = 1.0
 MAX_ISSUE_TITLE_LENGTH = 120
 
 _ENTRY_HEADING_RE = re.compile(r"^## \d{2}:\d{2}\s*$", re.MULTILINE)
+# Each entry's metadata block starts here; everything above it is what the user wrote.
+_METADATA_PREFIX = "- Discord投稿者:"
 
 
 def count_entry_headings(markdown: str) -> int:
     """Number of `## HH:MM` entries in a daily Markdown file."""
     return len(_ENTRY_HEADING_RE.findall(markdown))
+
+
+def extract_entry_bodies(markdown: str) -> list[str]:
+    """The text the user actually wrote, one string per entry.
+
+    Metadata bullets (author, IDs, timestamps, R2 keys) are dropped so a
+    summarizer sees the diary content rather than bookkeeping noise.
+    """
+    bodies: list[str] = []
+    current: list[str] | None = None
+
+    def flush() -> None:
+        nonlocal current
+        if current is not None:
+            body = "\n".join(current).strip()
+            if body:
+                bodies.append(body)
+        current = None
+
+    for line in markdown.splitlines():
+        if _ENTRY_HEADING_RE.match(line):
+            flush()
+            current = []
+        elif current is None:
+            continue
+        elif line.startswith(_METADATA_PREFIX):
+            flush()
+        else:
+            current.append(line)
+    flush()
+    return bodies
 
 
 class GitHubSaveError(Exception):
@@ -157,17 +190,22 @@ class GitHubService:
         except GithubException as exc:
             raise GitHubIssueError(f"GitHub Issueの取得に失敗しました: {exc}") from exc
 
-    def count_entries_for_date(self, dt: datetime) -> int:
-        """How many lifelog entries the given (JST) date's file holds.
-
-        A missing file simply means nothing was recorded yet.
-        """
+    def fetch_daily_markdown(self, dt: datetime) -> str | None:
+        """The given (JST) date's diary file, or None when nothing exists yet."""
         try:
             contents = self._repo().get_contents(
                 build_daily_path(dt), ref=self._config.github_branch
             )
         except UnknownObjectException:
-            return 0
+            return None
         except GithubException as exc:
             raise GitHubSaveError(f"日記ファイルの取得に失敗しました: {exc}") from exc
-        return count_entry_headings(contents.decoded_content.decode("utf-8"))
+        return contents.decoded_content.decode("utf-8")
+
+    def count_entries_for_date(self, dt: datetime) -> int:
+        """How many lifelog entries the given (JST) date's file holds.
+
+        A missing file simply means nothing was recorded yet.
+        """
+        markdown = self.fetch_daily_markdown(dt)
+        return count_entry_headings(markdown) if markdown else 0

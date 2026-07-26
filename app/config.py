@@ -60,6 +60,13 @@ class Config:
     log_max_bytes: int
     log_backup_count: int
 
+    summary_provider: str
+    summary_timeout_seconds: int
+    ollama_url: str
+    ollama_model: str
+    anthropic_api_key: str | None
+    anthropic_model: str
+
     @property
     def max_attachment_size_bytes(self) -> int:
         return self.max_attachment_size_mb * 1024 * 1024
@@ -193,6 +200,18 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         env.get("EVENING_NOTIFICATION_TIME", "20:00"), "EVENING_NOTIFICATION_TIME", tzinfo
     )
 
+    summary_provider = (env.get("SUMMARY_PROVIDER", "").strip() or "none").lower()
+    if summary_provider not in ("none", "ollama", "claude"):
+        raise ConfigError(
+            "環境変数 SUMMARY_PROVIDER は none / ollama / claude のいずれかで指定してください"
+            f"（値: {summary_provider!r}）"
+        )
+    anthropic_api_key = env.get("ANTHROPIC_API_KEY", "").strip() or None
+    if summary_provider == "claude" and not anthropic_api_key:
+        raise ConfigError(
+            "SUMMARY_PROVIDER=claude を使うには ANTHROPIC_API_KEY の設定が必要です"
+        )
+
     return Config(
         discord_bot_token=env["DISCORD_BOT_TOKEN"],
         discord_guild_id=_parse_int(env, "DISCORD_GUILD_ID"),
@@ -219,6 +238,12 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         log_file=(env.get("LOG_FILE", "").strip() or None),
         log_max_bytes=_parse_positive_int(env, "LOG_MAX_BYTES", 5 * 1024 * 1024),
         log_backup_count=_parse_positive_int(env, "LOG_BACKUP_COUNT", 3),
+        summary_provider=summary_provider,
+        summary_timeout_seconds=_parse_positive_int(env, "SUMMARY_TIMEOUT_SECONDS", 180),
+        ollama_url=env.get("OLLAMA_URL", "").strip() or "http://localhost:11434",
+        ollama_model=env.get("OLLAMA_MODEL", "").strip() or "qwen2.5:7b",
+        anthropic_api_key=anthropic_api_key,
+        anthropic_model=env.get("ANTHROPIC_MODEL", "").strip() or "claude-opus-5",
     )
 
 
