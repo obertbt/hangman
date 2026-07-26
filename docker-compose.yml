@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    # Secrets are injected at runtime, never baked into the image
+    # (.dockerignore keeps .env out of the build context).
+    env_file: .env
+    # Restarts on crash and after a server reboot, but stays down when
+    # stopped on purpose with `docker compose stop`.
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

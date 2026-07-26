@@ -7,4 +7,6 @@ __pycache__
 .pytest_cache
 tests
 daily
+deploy
 README.md
+docker-compose.yml

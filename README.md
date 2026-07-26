@@ -290,9 +290,105 @@ Botを起動している間、決まった時刻に自動でメッセージが�
 まずはローカルのPython環境での動作確認を推奨します。問題なければDockerでも実行できます。
 
 ```bash
+docker compose up --build
+```
+
+停止は `Ctrl+C`、バックグラウンド実行は `docker compose up -d --build` です。
+
+単発で試すだけなら次でも動きます。
+
+```bash
 docker build -t hearth-life .
 docker run --rm --env-file .env hearth-life
 ```
+
+---
+
+## 10.5 24時間稼働させる
+
+Botは**起動している間だけ**動きます。PCを閉じると日記の保存も定時通知も止まるため、常時稼働させたい場合はサーバー（クラウドVM・自宅サーバーなど）に置きます。
+
+このリポジトリには、**どのLinuxサーバーでも使える**2通りの設定を用意しています。Docker方式のほうが簡単です。
+
+### 事前に決めること
+
+- **タイムゾーンはサーバー設定に依存しません。** 日付・時刻は `.env` の `TIMEZONE`（既定 `Asia/Tokyo`）で判定するため、サーバーがUTCでも日記の日付は日本時間で正しく切り替わります
+- `.env` は**Gitに含まれていません**。サーバーへは手動でコピーします（後述）
+
+### 方式A: Docker Compose（推奨）
+
+サーバーにDockerとGitが入っている前提です。
+
+```bash
+# 1. リポジトリを取得
+git clone https://github.com/obertbt/hangman.git
+cd hangman
+git checkout claude/lifelog-bot-minimal-d1w3jb
+
+# 2. .env を作成し、手元と同じ内容を貼り付ける
+nano .env
+chmod 600 .env
+
+# 3. バックグラウンドで起動
+docker compose up -d --build
+```
+
+これだけで、**クラッシュ時の自動再起動**と**サーバー再起動後の自動起動**（`restart: unless-stopped`）が有効になります。
+
+運用コマンド：
+
+```bash
+docker compose logs -f       # ログを見る（起動確認・エラー調査）
+docker compose restart       # 再起動
+docker compose stop          # 停止（意図的な停止後は自動復帰しません）
+docker compose up -d --build # コード更新後の反映（git pull のあとに実行）
+```
+
+### 方式B: systemd（Dockerを使わない場合）
+
+```bash
+# 1. 実行用ユーザーとディレクトリを用意
+sudo useradd --system --create-home hearth
+sudo git clone https://github.com/obertbt/hangman.git /opt/hangman
+cd /opt/hangman
+sudo git checkout claude/lifelog-bot-minimal-d1w3jb
+
+# 2. 仮想環境と依存関係
+sudo python3 -m venv /opt/hangman/.venv
+sudo /opt/hangman/.venv/bin/pip install -r requirements.txt
+
+# 3. .env を作成して権限を絞る
+sudo nano /opt/hangman/.env
+sudo chmod 600 /opt/hangman/.env
+sudo chown -R hearth:hearth /opt/hangman
+
+# 4. サービスを登録して起動
+sudo cp deploy/hearth-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hearth-bot
+```
+
+運用コマンド：
+
+```bash
+sudo systemctl status hearth-bot     # 稼働状況
+sudo journalctl -u hearth-bot -f     # ログを見る
+sudo systemctl restart hearth-bot    # 再起動
+```
+
+### 稼働できたかの確認
+
+1. ログに `Logged in as ...` と `監視チャンネルを確認しました: #daily` が出ている
+2. ログに `朝の定時通知を 04:00 に設定しました` / `夜の定時通知を 20:00 に設定しました` が出ている
+3. `#daily` に投稿して、Botが返信しGitHubに保存される
+4. **サーバーを再起動しても、自動でBotが復帰する**（ここまで確認して初めて「24時間稼働」です）
+
+### 秘密情報の扱い
+
+- `.env` は**絶対にGitにコミットしない**でください（`.gitignore` 済み）
+- サーバー上の `.env` は `chmod 600` で本人のみ読み取り可にしてください
+- Dockerイメージにトークンは含まれません（`.dockerignore` で `.env` を除外し、実行時に渡す方式です）
+- トークンが漏れた可能性がある場合は、Discord / GitHub / R2 の各画面で**再発行（ローテーション）**してください
 
 ---
 
@@ -309,11 +405,14 @@ hearth-life/
 │  ├─ notifications.py    # 朝・夜の定時通知メッセージの組み立て
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
+├─ deploy/
+│  └─ hearth-bot.service  # systemd用ユニット（24時間稼働・方式B）
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
 ├─ .env.example
 ├─ .gitignore
 ├─ requirements.txt
 ├─ Dockerfile
+├─ docker-compose.yml     # 24時間稼働・方式A（自動再起動つき）
 ├─ .dockerignore
 └─ README.md
 ```
