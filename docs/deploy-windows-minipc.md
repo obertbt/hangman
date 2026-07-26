@@ -197,15 +197,17 @@ PCの電源が入ったらBotも自動で起動し、落ちても自動で復帰
 
 ```powershell
 cd $HOME\Documents\hangman
-Get-Content logs\bot.log -Tail 20
+Get-Content logs\bot.log -Tail 20 -Encoding UTF8
 ```
 
 `Logged in as ...` が記録されていれば成功です。
 
+> **`-Encoding UTF8` は必ず付けてください。** Windows PowerShell 5.1 の `Get-Content` は既定で日本語環境の文字コード（cp932）としてファイルを読むため、付けないと `繝ｭ繧ｰ繝輔ぃ繧､繝ｫ` のように文字化けして表示されます（ファイル自体は壊れていません）。PowerShell 7 では不要です。
+
 `bot.log` が存在しない場合は、Botが起動する前に失敗しています。起動処理のログを確認してください。
 
 ```powershell
-Get-Content logs\launcher.log -Tail 30
+Get-Content logs\launcher.log -Tail 30 -Encoding UTF8
 ```
 
 `launcher.log` に出るメッセージの意味は次のとおりです（英語表記なのは、日本語を含めるとPowerShell 5.1で文字化けするためです）。
@@ -241,13 +243,34 @@ Get-Content logs\launcher.log -Tail 30
 
 ```powershell
 cd $HOME\Documents\hangman
-Get-Content logs\bot.log -Tail 30          # 直近30行
-Get-Content logs\bot.log -Wait -Tail 10    # リアルタイム表示（Ctrl+Cで終了）
+Get-Content logs\bot.log -Tail 30 -Encoding UTF8        # 直近30行
+Get-Content logs\bot.log -Wait -Tail 10 -Encoding UTF8  # リアルタイム表示（Ctrl+Cで終了）
 ```
 
 ### 停止・再開・再起動
 
 タスクスケジューラで `HearthLifelogBot` を右クリックし、「終了」「実行する」を選びます。
+
+### 二重起動の確認と解消
+
+**Botが2つ動いていると、1回の投稿がGitHubに2回保存されます。** 手動で起動したものを止め忘れたときに起こります。
+
+まず、動いているPythonの数を確認します。
+
+```powershell
+Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime
+```
+
+**1つだけなら正常**です。2つ以上表示されたら、いったん全部止めてからタスクだけを起動し直します。
+
+```powershell
+Stop-ScheduledTask -TaskName HearthLifelogBot
+Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+そのうえで、タスクスケジューラで「実行する」を選び、再度上のコマンドで1つだけになったことを確認してください。
+
+ログ上では、`Logged in as ...` の行が短い間隔で2回出ていたら二重起動を疑ってください。
 
 ### コードを更新したとき
 
@@ -277,13 +300,14 @@ Windows Updateの自動再起動でBotが止まることがありますが、**�
 | 症状 | 対処 |
 |---|---|
 | タスクの状態が「準備完了」のまま動かない | 「操作」タブのパスが間違っている可能性があります。`deploy\run-bot.ps1` が実在するか確認してください |
-| 前回の実行結果が `1`（`0x1`） | 起動処理が失敗しています。**`logs\launcher.log` に原因が記録されています**。`Get-Content logs\launcher.log -Tail 30` で確認してください |
+| 前回の実行結果が `1`（`0x1`） | 起動処理が失敗しています。**`logs\launcher.log` に原因が記録されています**。`Get-Content logs\launcher.log -Tail 30 -Encoding UTF8` で確認してください |
 | `run-bot.ps1` 実行時に「配列インデックス式が存在しないか、または無効です」「文字列に終端記号 " がありません」などの構文エラー | スクリプトが文字化けしています。`deploy\run-bot.ps1` を編集して日本語などの非ASCII文字を追加すると発生します（PowerShell 5.1はBOM無しの`.ps1`を日本語環境の文字コードとして読むため）。`git checkout deploy\run-bot.ps1` で元に戻してください |
 | `logs\bot.log` が作られない | Botが起動する前に失敗しています。`logs\launcher.log` を確認してください。手元で `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<リポジトリのパス>\deploy\run-bot.ps1"` を実行すると、同じ処理を画面上で再現できます |
 | ログファイルが作られない | `.env` に `LOG_FILE=logs\bot.log` を書き忘れています |
 | 数日後に勝手に止まっている | 「設定」タブの**「タスクを停止するまでの時間」のチェックが外れているか**確認してください（既定3日で強制終了されます） |
 | 朝の通知が来ない | PCがスリープしていた可能性があります。手順2の `powercfg` を再確認してください |
-| 投稿が二重に保存される | 手元のPCでもBotが動いています。どちらか一方だけにしてください |
+| 投稿が二重に保存される | Botが2つ動いています（手動起動とタスクの併存など）。下記「二重起動の確認と解消」を参照してください |
+| ログが文字化けする（`繝ｭ繧ｰ...`） | `Get-Content` に `-Encoding UTF8` を付け忘れています。ファイル自体は正常です |
 | 起動時に「設定エラー: 必須の環境変数が…」 | `.env` の記入漏れです。表示された変数名を確認してください |
 
 ---
