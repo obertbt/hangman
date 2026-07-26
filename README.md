@@ -36,12 +36,15 @@ GitHubの日記ファイルには画像そのものではなく、R2のオブジ
    - このトークンはGitHubやチャットには絶対に貼らず、ローカルの `.env` にのみ保存してください。
 3. 同じ「Bot」ページで、以下を **必ず有効化** します。
    - **Message Content Intent**（本文を読み取るために必須です）
-4. Botに付与する権限（OAuth2 URL Generatorで選択）：
-   - `View Channels`
-   - `Send Messages`
-   - `Read Message History`
-   - `Attach Files`
-   - `Embed Links`
+4. OAuth2 → URL Generator で招待URLを作ります。
+   - **SCOPES**: `bot` と **`applications.commands`** の両方にチェック
+     （`applications.commands` が無いと `/image` などのスラッシュコマンドが使えません）
+   - **BOT PERMISSIONS**:
+     - `View Channels`
+     - `Send Messages`
+     - `Read Message History`
+     - `Attach Files`
+     - `Embed Links`
 5. 生成されたURLからBotを自分のサーバーに招待します。
 6. サーバーに `#daily` チャンネルを作成し、そのチャンネルIDを控えます（Discordの開発者モードを有効にし、チャンネルを右クリック→「IDをコピー」）。サーバー自体のID（Guild ID）も同様に控えます。
 
@@ -125,6 +128,7 @@ R2_ENDPOINT_URL=https://ACCOUNT_ID.r2.cloudflarestorage.com
 
 TIMEZONE=Asia/Tokyo
 MAX_ATTACHMENT_SIZE_MB=20     # 添付画像の上限サイズ（MB）
+SIGNED_URL_EXPIRY_SECONDS=300 # /image で発行する一時URLの有効秒数（既定5分・最大7日）
 ```
 
 `.env` は `.gitignore` に含まれているため、Gitにコミットされません。**トークン類を絶対にGitHubへコミットしないでください。**
@@ -155,6 +159,27 @@ pytest
 
 ---
 
+## 7.5 画像を見る（`/image` コマンド）
+
+R2バケットは非公開のため、保存した画像は通常のURLでは閲覧できません。見たいときは、Discordで `/image` コマンドを使って**一時的な署名付きURL**を発行します。
+
+1. GitHubの日記ファイルを開き、「添付ファイル」に記録されたR2キーをコピーする
+   ```
+   images/2026/07/26/1530740602294108251-2026-01-04_194409.png
+   ```
+2. Discordで次のように入力する
+   ```
+   /image key: images/2026/07/26/1530740602294108251-2026-01-04_194409.png
+   ```
+3. Botが一時URLを返信します。既定では**約5分で失効**します。
+
+補足：
+
+- 返信は **自分にしか見えない形式（ephemeral）** で送られます。他のメンバーには表示されません。
+- 発行されたURLは事実上のパスワードです。ログには出力されず、有効期限が切れると使えなくなります。
+- 有効期間は `.env` の `SIGNED_URL_EXPIRY_SECONDS` で変更できます（秒単位、最大7日）。
+- `ALLOWED_DISCORD_USER_IDS` を設定している場合、対象外のユーザーはこのコマンドを使えません。
+
 ## 8. 動作確認方法
 
 1. `.env` を設定した状態でBotを起動します。
@@ -178,6 +203,7 @@ pytest
 | Botはオンラインだが `#daily` に投稿しても反応しない | Message Content Intentが無効になっていないか確認してください。また `DISCORD_GUILD_ID` / `DISCORD_DAILY_CHANNEL_ID` が実際の値と一致しているか確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：GitHub保存` と返信される | GitHub Tokenの権限（Contents: Read and write）やリポジトリ名・ブランチ名を確認してください。 |
 | `❌ 保存に失敗しました / 処理段階：R2アップロード` と返信される | R2のAPIトークン権限や `R2_ENDPOINT_URL` の形式（`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`）を確認してください。 |
+| `/image` コマンドがDiscordの入力候補に出てこない | 招待URLのSCOPESに `applications.commands` が含まれていない可能性があります。READMEの手順2でチェックを入れ直した招待URLで、Botを再度招待してください（サーバーから追放する必要はありません）。その後Botを再起動し、Discordアプリも再読み込みしてください。 |
 | GitHubへの書き込みで409エラーが頻発する | 同じ日付ファイルへの同時書き込みが多発している状態です。Bot内部で自動的に再試行（最大3回）しますが、それでも失敗する場合は投稿間隔を空けてください。 |
 
 **注意:** Discord Bot Token、GitHub Token、R2のAccess Key ID / Secret Access Key / Account IDは、コード・コミット・チャット・ログのいずれにも記載しないでください。
@@ -202,9 +228,9 @@ hearth-life/
 ├─ app/
 │  ├─ main.py             # エントリーポイント
 │  ├─ config.py           # 環境変数の読み込み・検証
-│  ├─ discord_handler.py  # Discordメッセージの処理・返信
+│  ├─ discord_handler.py  # Discordメッセージ・/imageコマンドの処理と返信
 │  ├─ github_service.py   # GitHubへのMarkdown保存
-│  ├─ r2_service.py       # R2への画像アップロード・削除
+│  ├─ r2_service.py       # R2への画像アップロード・削除・署名付きURL発行
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
@@ -218,22 +244,21 @@ hearth-life/
 
 ---
 
-## 12. 今回実装しないもの
+## 12. 現時点で実装していないもの
 
 - AIによる分類・要約
 - GitHub Issue作成（`!task` など）
 - 定時通知
 - 動画・音声・PDF対応
 - 画像のOCR・自動圧縮
-- 画像の公開URL発行・Web管理画面・データベース
+- 恒久的な公開URL（一時的な署名付きURLのみ対応）
+- Web管理画面・データベース
 
 ---
 
 ## 13. 次に追加できる機能
 
-この最小版が問題なく動作したら、次の順番で機能追加を検討すると安全です。
-
-1. `/image` コマンドで、R2の画像に対する一時的な署名付きURLを発行する機能
+1. ~~`/image` コマンドで、R2の画像に対する一時的な署名付きURLを発行する機能~~（実装済み）
 2. `!task` によるGitHub Issue作成
 3. 朝・夜の定時通知
 4. AIによる日記の整理・要約

@@ -48,6 +48,7 @@ class Config:
 
     timezone: str
     max_attachment_size_mb: int
+    signed_url_expiry_seconds: int
 
     @property
     def max_attachment_size_bytes(self) -> int:
@@ -105,6 +106,20 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
             f"環境変数 MAX_ATTACHMENT_SIZE_MB は整数で指定してください（値: {max_size_raw!r}）"
         ) from exc
 
+    expiry_raw = env.get("SIGNED_URL_EXPIRY_SECONDS", "300")
+    try:
+        signed_url_expiry_seconds = int(expiry_raw)
+    except ValueError as exc:
+        raise ConfigError(
+            f"環境変数 SIGNED_URL_EXPIRY_SECONDS は整数で指定してください（値: {expiry_raw!r}）"
+        ) from exc
+    # S3署名付きURLの上限は7日間
+    if not 1 <= signed_url_expiry_seconds <= 604800:
+        raise ConfigError(
+            "環境変数 SIGNED_URL_EXPIRY_SECONDS は1〜604800（7日）の範囲で指定してください"
+            f"（値: {signed_url_expiry_seconds}）"
+        )
+
     timezone = env.get("TIMEZONE") or "Asia/Tokyo"
     try:
         ZoneInfo(timezone)
@@ -131,6 +146,7 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         r2_endpoint_url=env["R2_ENDPOINT_URL"],
         timezone=timezone,
         max_attachment_size_mb=max_attachment_size_mb,
+        signed_url_expiry_seconds=signed_url_expiry_seconds,
     )
 
 

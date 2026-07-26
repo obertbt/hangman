@@ -10,6 +10,7 @@ from datetime import datetime
 
 import boto3
 from botocore.config import Config as BotoConfig
+from botocore.exceptions import ClientError
 
 from app.config import Config
 
@@ -22,6 +23,10 @@ SUPPORTED_CONTENT_TYPES = {
 
 _UNSAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _DEFAULT_FILENAME = "file"
+
+OBJECT_KEY_PREFIX = "images/"
+# images/YYYY/MM/DD/<message-id>-<filename>
+_OBJECT_KEY_RE = re.compile(r"^images/\d{4}/\d{2}/\d{2}/[A-Za-z0-9._-]+$")
 
 
 def sanitize_filename(filename: str) -> str:
@@ -38,6 +43,28 @@ def build_object_key(dt: datetime, message_id: int, filename: str) -> str:
     """images/YYYY/MM/DD/<message-id>-<safe-filename>"""
     safe_name = sanitize_filename(filename)
     return f"images/{dt:%Y}/{dt:%m}/{dt:%d}/{message_id}-{safe_name}"
+
+
+def validate_object_key(key: str) -> str | None:
+    """Return an error message if `key` is not a well-formed lifelog image
+    key, or None when it is safe to use.
+
+    Restricting to the exact `images/YYYY/MM/DD/<name>` shape keeps a
+    crafted argument from reaching unrelated objects in the bucket.
+    """
+    key = key.strip()
+    if not key:
+        return "R2キーが空です。"
+    if not key.startswith(OBJECT_KEY_PREFIX):
+        return f"R2キーは `{OBJECT_KEY_PREFIX}` で始まる必要があります。"
+    if ".." in key:
+        return "R2キーに `..` は使用できません。"
+    if not _OBJECT_KEY_RE.match(key):
+        return (
+            "R2キーの形式が正しくありません。"
+            "`images/YYYY/MM/DD/<メッセージID>-<ファイル名>` の形式で指定してください。"
+        )
+    return None
 
 
 class R2Service:
@@ -66,4 +93,25 @@ class R2Service:
         self._client.delete_objects(
             Bucket=self._bucket,
             Delete={"Objects": [{"Key": key} for key in keys]},
+        )
+
+    def object_exists(self, key: str) -> bool:
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                return False
+            raise
+        return True
+
+    def generate_presigned_url(self, key: str, expires_in: int) -> str:
+        """Issue a temporary read URL for a private object.
+
+        The returned URL is a credential: never log it, and only hand it
+        back to the requesting user.
+        """
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": key},
+            ExpiresIn=expires_in,
         )

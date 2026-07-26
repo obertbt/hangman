@@ -40,6 +40,23 @@ def test_load_config_invalid_int_raises():
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_signed_url_expiry_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.signed_url_expiry_seconds == 300
+
+
+def test_load_config_signed_url_expiry_custom():
+    env = dict(BASE_ENV, SIGNED_URL_EXPIRY_SECONDS="600")
+    assert load_config(env=env, load_dotenv_file=False).signed_url_expiry_seconds == 600
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "604801", "abc"])
+def test_load_config_rejects_invalid_signed_url_expiry(value):
+    env = dict(BASE_ENV, SIGNED_URL_EXPIRY_SECONDS=value)
+    with pytest.raises(ConfigError, match="SIGNED_URL_EXPIRY_SECONDS"):
+        load_config(env=env, load_dotenv_file=False)
+
+
 def test_load_config_rejects_unknown_timezone():
     env = dict(BASE_ENV, TIMEZONE="Not/AZone")
     with pytest.raises(ConfigError, match="tzdata"):
@@ -69,6 +86,7 @@ def _make_config(**overrides) -> Config:
         r2_endpoint_url="https://example.com",
         timezone="Asia/Tokyo",
         max_attachment_size_mb=20,
+        signed_url_expiry_seconds=300,
     )
     defaults.update(overrides)
     return Config(**defaults)

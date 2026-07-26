@@ -8,6 +8,7 @@ from app.config import Config
 from app.discord_handler import (
     AttachmentDownloadError,
     build_failure_reply,
+    build_image_url_reply,
     build_success_reply,
     describe_rejection,
     filter_image_attachments,
@@ -37,6 +38,7 @@ def _make_config(**overrides) -> Config:
         r2_endpoint_url="https://example.com",
         timezone="Asia/Tokyo",
         max_attachment_size_mb=20,
+        signed_url_expiry_seconds=300,
     )
     defaults.update(overrides)
     return Config(**defaults)
@@ -147,6 +149,20 @@ def test_build_success_reply_without_images():
 
 def test_build_failure_reply_basic():
     assert build_failure_reply("GitHub保存") == "❌ 保存に失敗しました\n処理段階：GitHub保存"
+
+
+def test_build_image_url_reply_includes_key_url_and_minutes():
+    reply = build_image_url_reply(
+        "images/2026/07/26/123-photo.png", 300, "https://signed.example/photo"
+    )
+    assert "約5分" in reply
+    assert "`images/2026/07/26/123-photo.png`" in reply
+    assert "https://signed.example/photo" in reply
+
+
+def test_build_image_url_reply_rounds_up_short_expiry_to_one_minute():
+    reply = build_image_url_reply("images/2026/07/26/123-photo.png", 20, "https://x/y")
+    assert "約1分" in reply
 
 
 def test_build_failure_reply_with_detail():

@@ -2,7 +2,16 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from app.r2_service import R2Service, build_object_key, sanitize_filename
+import pytest
+
+from botocore.exceptions import ClientError
+
+from app.r2_service import (
+    R2Service,
+    build_object_key,
+    sanitize_filename,
+    validate_object_key,
+)
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -73,3 +82,62 @@ def test_delete_objects_is_noop_for_empty_list():
     service, client = _make_service()
     service.delete_objects([])
     client.delete_objects.assert_not_called()
+
+
+def test_validate_object_key_accepts_well_formed_key():
+    assert validate_object_key("images/2026/07/26/123456789-photo.png") is None
+
+
+def test_validate_object_key_rejects_empty():
+    assert validate_object_key("   ") is not None
+
+
+def test_validate_object_key_rejects_wrong_prefix():
+    assert validate_object_key("secrets/2026/07/26/123-photo.png") is not None
+
+
+def test_validate_object_key_rejects_path_traversal():
+    assert validate_object_key("images/../../etc/passwd") is not None
+    assert validate_object_key("images/2026/07/26/../../../x.png") is not None
+
+
+def test_validate_object_key_rejects_malformed_date_segments():
+    assert validate_object_key("images/2026/7/26/123-photo.png") is not None
+    assert validate_object_key("images/2026/07/26/sub/dir/photo.png") is not None
+
+
+def test_object_exists_returns_true_when_head_succeeds():
+    service, client = _make_service()
+    assert service.object_exists("images/2026/07/26/123-photo.png") is True
+    client.head_object.assert_called_once_with(
+        Bucket="hearth-media", Key="images/2026/07/26/123-photo.png"
+    )
+
+
+def test_object_exists_returns_false_on_404():
+    service, client = _make_service()
+    client.head_object.side_effect = ClientError(
+        {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+    )
+    assert service.object_exists("images/2026/07/26/123-missing.png") is False
+
+
+def test_object_exists_reraises_other_client_errors():
+    service, client = _make_service()
+    client.head_object.side_effect = ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "Denied"}}, "HeadObject"
+    )
+    with pytest.raises(ClientError):
+        service.object_exists("images/2026/07/26/123-photo.png")
+
+
+def test_generate_presigned_url_passes_bucket_key_and_expiry():
+    service, client = _make_service()
+    client.generate_presigned_url.return_value = "https://signed.example/photo"
+    url = service.generate_presigned_url("images/2026/07/26/123-photo.png", 300)
+    assert url == "https://signed.example/photo"
+    client.generate_presigned_url.assert_called_once_with(
+        "get_object",
+        Params={"Bucket": "hearth-media", "Key": "images/2026/07/26/123-photo.png"},
+        ExpiresIn=300,
+    )

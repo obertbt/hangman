@@ -8,6 +8,7 @@ adapter that turns real Discord events into that model.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Awaitable, Callable
@@ -19,7 +20,12 @@ import discord
 from app.config import Config, is_user_allowed
 from app.github_service import GitHubSaveError, GitHubService
 from app.models import IncomingAttachment, IncomingMessage, MarkdownEntryData, ProcessResult
-from app.r2_service import SUPPORTED_CONTENT_TYPES, R2Service, build_object_key
+from app.r2_service import (
+    SUPPORTED_CONTENT_TYPES,
+    R2Service,
+    build_object_key,
+    validate_object_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +191,15 @@ def to_incoming_message(message: discord.Message) -> IncomingMessage:
     )
 
 
+def build_image_url_reply(key: str, expiry_seconds: int, url: str) -> str:
+    minutes = max(1, round(expiry_seconds / 60))
+    return (
+        f"🔗 一時閲覧URLを発行しました（約{minutes}分で失効します）\n"
+        f"R2キー: `{key}`\n"
+        f"{url}"
+    )
+
+
 class LifelogClient(discord.Client):
     def __init__(
         self,
@@ -198,9 +213,33 @@ class LifelogClient(discord.Client):
         self.github_service = github_service
         self.r2_service = r2_service
         self._http_session: aiohttp.ClientSession | None = None
+        self.tree = discord.app_commands.CommandTree(self)
+        self._register_commands()
+
+    def _register_commands(self) -> None:
+        guild = discord.Object(id=self.config.discord_guild_id)
+
+        @self.tree.command(
+            name="image",
+            description="ライフログ画像の一時閲覧URLを発行します（自分にだけ表示されます）",
+            guild=guild,
+        )
+        @discord.app_commands.describe(
+            key="GitHubの日記に記録されたR2キー（例: images/2026/07/26/123-photo.png）"
+        )
+        async def image_command(interaction: discord.Interaction, key: str) -> None:
+            await self._handle_image_command(interaction, key)
 
     async def setup_hook(self) -> None:
         self._http_session = aiohttp.ClientSession()
+        guild = discord.Object(id=self.config.discord_guild_id)
+        try:
+            await self.tree.sync(guild=guild)
+        except Exception:
+            logger.exception(
+                "スラッシュコマンドの登録に失敗しました。Botの招待URLに "
+                "applications.commands スコープが含まれているか確認してください。"
+            )
 
     async def close(self) -> None:
         if self._http_session is not None:
@@ -256,6 +295,52 @@ class LifelogClient(discord.Client):
         if result is None:
             return
         await message.reply(result.reply)
+
+    async def _handle_image_command(self, interaction: discord.Interaction, key: str) -> None:
+        # The signed URL is a credential, so every response stays ephemeral.
+        if not is_user_allowed(self.config, interaction.user.id):
+            await interaction.response.send_message(
+                "❌ このコマンドを使用する権限がありません。", ephemeral=True
+            )
+            return
+
+        key = key.strip()
+        error = validate_object_key(key)
+        if error is not None:
+            await interaction.response.send_message(f"❌ {error}", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            exists = await asyncio.to_thread(self.r2_service.object_exists, key)
+            if not exists:
+                await interaction.followup.send(
+                    f"❌ 指定された画像がR2に見つかりません。\nR2キー: `{key}`", ephemeral=True
+                )
+                return
+            url = await asyncio.to_thread(
+                self.r2_service.generate_presigned_url,
+                key,
+                self.config.signed_url_expiry_seconds,
+            )
+        except Exception:
+            # Never log the URL itself; the traceback is safe to record.
+            logger.exception("署名付きURLの発行に失敗しました: key=%s", key)
+            await interaction.followup.send(
+                "❌ 一時閲覧URLの発行に失敗しました。ログを確認してください。", ephemeral=True
+            )
+            return
+
+        logger.info(
+            "一時閲覧URLを発行しました: key=%s user=%s 有効期間=%s秒",
+            key,
+            interaction.user.id,
+            self.config.signed_url_expiry_seconds,
+        )
+        await interaction.followup.send(
+            build_image_url_reply(key, self.config.signed_url_expiry_seconds, url),
+            ephemeral=True,
+        )
 
     async def _download_attachment(self, url: str, max_bytes: int) -> bytes:
         assert self._http_session is not None
