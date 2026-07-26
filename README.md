@@ -310,6 +310,8 @@ Botは**起動している間だけ**動きます。PCを閉じると日記の�
 
 このリポジトリには、**どのLinuxサーバーでも使える**2通りの設定を用意しています。Docker方式のほうが簡単です。
 
+> **WebARENA Indigoを使う場合**は、アカウント作成からデプロイ・再起動確認までをまとめた専用手順があります → [docs/deploy-webarena-indigo.md](docs/deploy-webarena-indigo.md)
+
 ### 事前に決めること
 
 - **タイムゾーンはサーバー設定に依存しません。** 日付・時刻は `.env` の `TIMEZONE`（既定 `Asia/Tokyo`）で判定するため、サーバーがUTCでも日記の日付は日本時間で正しく切り替わります
@@ -407,6 +409,8 @@ hearth-life/
 ├─ tests/                 # pytestによるユニットテスト
 ├─ deploy/
 │  └─ hearth-bot.service  # systemd用ユニット（24時間稼働・方式B）
+├─ docs/
+│  └─ deploy-webarena-indigo.md  # WebARENA Indigoへのデプロイ手順
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
 ├─ .env.example
 ├─ .gitignore
