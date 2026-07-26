@@ -192,6 +192,12 @@ Get-Content logs\bot.log -Tail 20
 
 `Logged in as ...` が記録されていれば成功です。
 
+`bot.log` が存在しない場合は、Botが起動する前に失敗しています。起動処理のログを確認してください。
+
+```powershell
+Get-Content logs\launcher.log -Tail 30
+```
+
 ### Discordで確認
 
 1. `#daily` にテキストを投稿 → Botが返信し、GitHubに保存される
@@ -251,7 +257,8 @@ Windows Updateの自動再起動でBotが止まることがありますが、**�
 | 症状 | 対処 |
 |---|---|
 | タスクの状態が「準備完了」のまま動かない | 「操作」タブのパスが間違っている可能性があります。`deploy\run-bot.ps1` が実在するか確認してください |
-| 前回の実行結果が `0x1` | スクリプトがエラー終了しています。`logs\bot.log` を確認してください |
+| 前回の実行結果が `1`（`0x1`） | 起動処理が失敗しています。**`logs\launcher.log` に原因が記録されています**。`Get-Content logs\launcher.log -Tail 30` で確認してください |
+| `logs\bot.log` が作られない | Botが起動する前に失敗しています。`logs\launcher.log` を確認してください。手元で `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<リポジトリのパス>\deploy\run-bot.ps1"` を実行すると、同じ処理を画面上で再現できます |
 | ログファイルが作られない | `.env` に `LOG_FILE=logs\bot.log` を書き忘れています |
 | 数日後に勝手に止まっている | 「設定」タブの**「タスクを停止するまでの時間」のチェックが外れているか**確認してください（既定3日で強制終了されます） |
 | 朝の通知が来ない | PCがスリープしていた可能性があります。手順2の `powercfg` を再確認してください |
