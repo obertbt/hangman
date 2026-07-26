@@ -7,9 +7,11 @@ from app.summary_service import Summarizer
 from app.tagging import (
     MAX_LOGGED_REPLY_LENGTH,
     MAX_TAGS,
+    NO_TAG_TOKEN,
     build_tag_system_prompt,
     format_tags,
     generate_tags,
+    means_no_tags,
     parse_tag_line,
     parse_tags,
     summarize_reply_for_log,
@@ -143,3 +145,37 @@ def test_summarize_reply_for_log_flattens_and_truncates():
     assert summarize_reply_for_log("運動\n健康") == "運動 健康"
     assert summarize_reply_for_log(None) == "（空の回答）"
     assert len(summarize_reply_for_log("あ" * 500)) == MAX_LOGGED_REPLY_LENGTH + 1
+
+
+def test_prompt_gives_the_model_a_word_for_no_match():
+    """"Output nothing" gets answered by writing the instruction back."""
+    prompt = build_tag_system_prompt(("運動", "仕事"))
+    assert NO_TAG_TOKEN in prompt
+    assert "何も出力しない" not in prompt
+
+
+@pytest.mark.parametrize(
+    "reply", ["なし", "なし。", " None ", "該当なし", "何も出力しない", "-"]
+)
+def test_means_no_tags_recognises_a_no_match_answer(reply):
+    assert means_no_tags(reply) is True
+
+
+@pytest.mark.parametrize("reply", ["運動", "", None, "運動 なし"])
+def test_means_no_tags_rejects_everything_else(reply):
+    assert means_no_tags(reply) is False
+
+
+@pytest.mark.asyncio
+async def test_generate_tags_does_not_warn_about_a_no_match_answer(caplog):
+    """Nothing applying is a normal outcome, not a fault."""
+    summarizer = FakeSummarizer("なし")
+    with caplog.at_level("WARNING"):
+        assert await generate_tags(summarizer, "テスト", VOCAB, 30) == []
+    assert caplog.text == ""
+
+
+@pytest.mark.asyncio
+async def test_generate_tags_still_reads_tags_next_to_noise():
+    summarizer = FakeSummarizer("運動 なし")
+    assert await generate_tags(summarizer, "朝ラン5km", VOCAB, 30) == ["運動"]

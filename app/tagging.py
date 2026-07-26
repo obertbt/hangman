@@ -29,22 +29,58 @@ MAX_LOGGED_REPLY_LENGTH = 120
 
 TAG_HEADING = "以下の記録に当てはまるタグを選んでください。"
 
+NO_TAG_TOKEN = "なし"
+_NO_TAG_REPLIES = frozenset(
+    {
+        NO_TAG_TOKEN,
+        "無し",
+        "該当なし",
+        "該当するタグはありません",
+        "該当するタグなし",
+        # Observed from qwen2.5:3b: it wrote the old instruction back.
+        "何も出力しない",
+        "none",
+        "n/a",
+        "-",
+    }
+)
+
 _SEPARATOR_RE = re.compile(r"[\s,、。・/／|｜]+")
 _TAG_MARKS = "#＃「」『』【】()（）\"'`*-:："
 
 
 def build_tag_system_prompt(vocabulary: tuple[str, ...]) -> str:
     """The instructions the model gets. The vocabulary is embedded so the
-    prompt always matches whatever TAG_VOCABULARY is configured to."""
+    prompt always matches whatever TAG_VOCABULARY is configured to.
+
+    "Output nothing" is never asked for: a small model answers that by
+    writing the instruction back at you. It is given a word to say
+    instead, plus an example of each case to copy.
+    """
     choices = " / ".join(vocabulary)
     return (
         "あなたは日記の分類アシスタントです。"
         f"与えられた記録に当てはまるタグを、次の一覧から最大{MAX_TAGS}個選んでください。\n"
         f"一覧: {choices}\n"
-        "一覧にない言葉は絶対に使わないでください。"
-        "当てはまるものが無ければ、何も出力しないでください。"
-        "選んだタグだけを半角スペース区切りで出力し、説明や記号は付けないでください。"
+        "出力は、選んだタグを半角スペースで区切って並べたものだけにしてください。"
+        f"当てはまるタグが一つも無いときは {NO_TAG_TOKEN} とだけ出力してください。"
+        "一覧にない言葉・説明・記号は一切出力しないでください。\n"
+        "出力例1: 運動 健康\n"
+        f"出力例2: {NO_TAG_TOKEN}"
     )
+
+
+def means_no_tags(reply: str | None) -> bool:
+    """Whether the model is saying nothing applies.
+
+    That is a normal outcome, not a fault, so it must not be reported as
+    one. The instruction itself is listed because a small model answers
+    by repeating it rather than by staying quiet.
+    """
+    if not reply:
+        return False
+    cleaned = " ".join(reply.split()).strip("。.、,！!　 ").lower()
+    return cleaned in _NO_TAG_REPLIES
 
 
 def parse_tags(text: str, vocabulary: tuple[str, ...]) -> list[str]:
@@ -123,12 +159,14 @@ async def generate_tags(
         logger.exception("タグの生成に失敗しました")
         return []
 
-    # Both branches below used to return silently, which is why a
-    # misbehaving model looked exactly like tagging never running.
+    # Every branch below logs: a silent return is why a misbehaving model
+    # looked exactly like tagging never running.
     tags = parse_tags(reply or "", vocabulary)
     if tags:
         return tags
-    if reply:
+    if means_no_tags(reply):
+        logger.info("この投稿に当てはまるタグはありませんでした")
+    elif reply:
         logger.warning(
             "AIの回答にタグが見つかりませんでした（回答: %s）。"
             "一覧にない言葉は採用しないため、タグ無しで保存します。",
