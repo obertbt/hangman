@@ -48,6 +48,9 @@ def _make_config(**overrides) -> Config:
         notification_channel_id=None,
         morning_notification_time=None,
         evening_notification_time=None,
+        log_file=None,
+        log_max_bytes=5 * 1024 * 1024,
+        log_backup_count=3,
     )
     defaults.update(overrides)
     return Config(**defaults)

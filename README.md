@@ -134,6 +134,10 @@ SIGNED_URL_EXPIRY_SECONDS=300 # /image で発行する一時URLの有効秒数�
 NOTIFICATION_CHANNEL_ID=      # 定時通知の送信先チャンネルID（空なら #daily へ送信）
 MORNING_NOTIFICATION_TIME=04:00  # 朝の通知時刻（HH:MM・空欄で無効）
 EVENING_NOTIFICATION_TIME=20:00  # 夜の通知時刻（HH:MM・空欄で無効）
+
+LOG_FILE=                     # ログの出力先（空ならコンソールのみ）。常時稼働時は設定推奨
+LOG_MAX_BYTES=5242880         # ログ1ファイルの上限（既定5MB）
+LOG_BACKUP_COUNT=3            # 保持する世代数
 ```
 
 `.env` は `.gitignore` に含まれているため、Gitにコミットされません。**トークン類を絶対にGitHubへコミットしないでください。**
@@ -306,11 +310,16 @@ docker run --rm --env-file .env hearth-life
 
 ## 10.5 24時間稼働させる
 
-Botは**起動している間だけ**動きます。PCを閉じると日記の保存も定時通知も止まるため、常時稼働させたい場合はサーバー（クラウドVM・自宅サーバーなど）に置きます。
+Botは**起動している間だけ**動きます。PCを閉じると日記の保存も定時通知も止まるため、常時稼働させる環境が必要です。
 
-このリポジトリには、**どのLinuxサーバーでも使える**2通りの設定を用意しています。Docker方式のほうが簡単です。
+### 環境ごとの専用手順
 
-> **WebARENA Indigoを使う場合**は、アカウント作成からデプロイ・再起動確認までをまとめた専用手順があります → [docs/deploy-webarena-indigo.md](docs/deploy-webarena-indigo.md)
+| 稼働環境 | 手順書 | 月あたりの費用の目安 |
+|---|---|---|
+| **WindowsミニPC（つけっぱなし）** | [docs/deploy-windows-minipc.md](docs/deploy-windows-minipc.md) | 電気代のみ（10W機で約220円） |
+| **WebARENA Indigo などのVPS** | [docs/deploy-webarena-indigo.md](docs/deploy-webarena-indigo.md) | 350〜800円 |
+
+以下は、任意のLinuxサーバー向けの共通設定です（上記VPS手順の中身でもあります）。
 
 ### 事前に決めること
 
@@ -408,8 +417,10 @@ hearth-life/
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
 ├─ deploy/
-│  └─ hearth-bot.service  # systemd用ユニット（24時間稼働・方式B）
+│  ├─ hearth-bot.service  # systemd用ユニット（Linuxサーバー常時稼働）
+│  └─ run-bot.ps1         # Windowsタスクスケジューラ用の起動スクリプト
 ├─ docs/
+│  ├─ deploy-windows-minipc.md   # WindowsミニPCでの24時間稼働手順
 │  └─ deploy-webarena-indigo.md  # WebARENA Indigoへのデプロイ手順
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
 ├─ .env.example

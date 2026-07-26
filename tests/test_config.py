@@ -109,6 +109,29 @@ def test_load_config_notification_channel_defaults_to_none():
     assert load_config(env=BASE_ENV, load_dotenv_file=False).notification_channel_id is None
 
 
+def test_load_config_log_file_defaults_to_none():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.log_file is None
+    assert config.log_max_bytes == 5 * 1024 * 1024
+    assert config.log_backup_count == 3
+
+
+def test_load_config_parses_log_settings():
+    env = dict(BASE_ENV, LOG_FILE="logs/bot.log", LOG_MAX_BYTES="1024", LOG_BACKUP_COUNT="5")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.log_file == "logs/bot.log"
+    assert config.log_max_bytes == 1024
+    assert config.log_backup_count == 5
+
+
+@pytest.mark.parametrize("key", ["LOG_MAX_BYTES", "LOG_BACKUP_COUNT"])
+@pytest.mark.parametrize("value", ["0", "-1", "abc"])
+def test_load_config_rejects_invalid_log_numbers(key, value):
+    env = dict(BASE_ENV, **{key: value})
+    with pytest.raises(ConfigError, match=key):
+        load_config(env=env, load_dotenv_file=False)
+
+
 def test_load_config_rejects_unknown_timezone():
     env = dict(BASE_ENV, TIMEZONE="Not/AZone")
     with pytest.raises(ConfigError, match="tzdata"):
@@ -143,6 +166,9 @@ def _make_config(**overrides) -> Config:
         notification_channel_id=None,
         morning_notification_time=None,
         evening_notification_time=None,
+        log_file=None,
+        log_max_bytes=5 * 1024 * 1024,
+        log_backup_count=3,
     )
     defaults.update(overrides)
     return Config(**defaults)

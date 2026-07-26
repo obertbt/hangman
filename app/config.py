@@ -56,6 +56,10 @@ class Config:
     morning_notification_time: time_of_day | None
     evening_notification_time: time_of_day | None
 
+    log_file: str | None
+    log_max_bytes: int
+    log_backup_count: int
+
     @property
     def max_attachment_size_bytes(self) -> int:
         return self.max_attachment_size_mb * 1024 * 1024
@@ -67,6 +71,17 @@ def _parse_int(env: Mapping[str, str], key: str) -> int:
         return int(value)
     except ValueError as exc:
         raise ConfigError(f"環境変数 {key} は整数で指定してください（値: {value!r}）") from exc
+
+
+def _parse_positive_int(env: Mapping[str, str], key: str, default: int) -> int:
+    raw = env.get(key, "").strip() or str(default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"環境変数 {key} は整数で指定してください（値: {raw!r}）") from exc
+    if value < 1:
+        raise ConfigError(f"環境変数 {key} は1以上で指定してください（値: {value}）")
+    return value
 
 
 def _parse_optional_channel_id(raw: str | None, key: str) -> int | None:
@@ -201,6 +216,9 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         ),
         morning_notification_time=morning_notification_time,
         evening_notification_time=evening_notification_time,
+        log_file=(env.get("LOG_FILE", "").strip() or None),
+        log_max_bytes=_parse_positive_int(env, "LOG_MAX_BYTES", 5 * 1024 * 1024),
+        log_backup_count=_parse_positive_int(env, "LOG_BACKUP_COUNT", 3),
     )
 
 
