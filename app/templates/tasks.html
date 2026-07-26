@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+{% if issues %}
+<p class="muted">未完了のタスクが{{ issues|length }}件あります。</p>
+<ul class="list card">
+  {% for issue in issues %}
+  <li>
+    <a href="{{ issue.url }}" target="_blank" rel="noopener">
+      <span class="time">#{{ issue.number }}</span> {{ issue.title }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+<p class="muted">タスクを閉じるには、リンク先のGitHubで Close してください。</p>
+{% else %}
+<p class="empty">未完了のタスクはありません。</p>
+{% endif %}
+{% endblock %}

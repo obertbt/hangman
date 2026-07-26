@@ -60,6 +60,12 @@ class Config:
     log_max_bytes: int
     log_backup_count: int
 
+    web_enabled: bool
+    web_host: str
+    web_port: int
+    web_password: str | None
+    web_session_hours: int
+
     summary_provider: str
     summary_timeout_seconds: int
     ollama_url: str
@@ -200,6 +206,21 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         env.get("EVENING_NOTIFICATION_TIME", "20:00"), "EVENING_NOTIFICATION_TIME", tzinfo
     )
 
+    web_enabled = (env.get("WEB_ENABLED", "").strip().lower() or "false") in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    web_password = env.get("WEB_PASSWORD", "").strip() or None
+    if web_enabled and not web_password:
+        raise ConfigError(
+            "WEB_ENABLED=true のときは WEB_PASSWORD の設定が必要です"
+            "（日記が誰でも閲覧できる状態になるため）"
+        )
+    if web_password is not None and len(web_password) < 8:
+        raise ConfigError("WEB_PASSWORD は8文字以上にしてください")
+
     summary_provider = (env.get("SUMMARY_PROVIDER", "").strip() or "none").lower()
     if summary_provider not in ("none", "ollama", "claude"):
         raise ConfigError(
@@ -238,6 +259,11 @@ def load_config(env: Mapping[str, str] | None = None, *, load_dotenv_file: bool 
         log_file=(env.get("LOG_FILE", "").strip() or None),
         log_max_bytes=_parse_positive_int(env, "LOG_MAX_BYTES", 5 * 1024 * 1024),
         log_backup_count=_parse_positive_int(env, "LOG_BACKUP_COUNT", 3),
+        web_enabled=web_enabled,
+        web_host=env.get("WEB_HOST", "").strip() or "0.0.0.0",
+        web_port=_parse_positive_int(env, "WEB_PORT", 8787),
+        web_password=web_password,
+        web_session_hours=_parse_positive_int(env, "WEB_SESSION_HOURS", 720),
         summary_provider=summary_provider,
         summary_timeout_seconds=_parse_positive_int(env, "SUMMARY_TIMEOUT_SECONDS", 180),
         ollama_url=env.get("OLLAMA_URL", "").strip() or "http://localhost:11434",

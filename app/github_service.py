@@ -8,6 +8,7 @@ from datetime import datetime
 from github import Auth, Github, GithubException, UnknownObjectException
 
 from app.config import Config
+from app.diary import entry_bodies
 from app.models import CreatedIssue, IssueSummary, MarkdownEntryData, TaskData
 
 MAX_RETRIES = 3
@@ -15,8 +16,6 @@ INITIAL_BACKOFF_SECONDS = 1.0
 MAX_ISSUE_TITLE_LENGTH = 120
 
 _ENTRY_HEADING_RE = re.compile(r"^## \d{2}:\d{2}\s*$", re.MULTILINE)
-# Each entry's metadata block starts here; everything above it is what the user wrote.
-_METADATA_PREFIX = "- Discord投稿者:"
 
 
 def count_entry_headings(markdown: str) -> int:
@@ -30,29 +29,7 @@ def extract_entry_bodies(markdown: str) -> list[str]:
     Metadata bullets (author, IDs, timestamps, R2 keys) are dropped so a
     summarizer sees the diary content rather than bookkeeping noise.
     """
-    bodies: list[str] = []
-    current: list[str] | None = None
-
-    def flush() -> None:
-        nonlocal current
-        if current is not None:
-            body = "\n".join(current).strip()
-            if body:
-                bodies.append(body)
-        current = None
-
-    for line in markdown.splitlines():
-        if _ENTRY_HEADING_RE.match(line):
-            flush()
-            current = []
-        elif current is None:
-            continue
-        elif line.startswith(_METADATA_PREFIX):
-            flush()
-        else:
-            current.append(line)
-    flush()
-    return bodies
+    return entry_bodies(markdown)
 
 
 class GitHubSaveError(Exception):
@@ -172,6 +149,20 @@ class GitHubService:
                 ) from exc
             raise GitHubIssueError(f"GitHub Issueの作成に失敗しました: {exc}") from exc
         return CreatedIssue(number=issue.number, url=issue.html_url)
+
+    def list_dates_in_month(self, year: int, month: int) -> list[str]:
+        """`YYYY-MM-DD` strings for days that have a diary file, newest first."""
+        path = f"daily/{year:04d}/{month:02d}"
+        try:
+            contents = self._repo().get_contents(path, ref=self._config.github_branch)
+        except UnknownObjectException:
+            return []
+        except GithubException as exc:
+            raise GitHubSaveError(f"日記一覧の取得に失敗しました: {exc}") from exc
+        if not isinstance(contents, list):
+            contents = [contents]
+        dates = [item.name[:-3] for item in contents if item.name.endswith(".md")]
+        return sorted(dates, reverse=True)
 
     def list_open_issues(self, limit: int) -> list[IssueSummary]:
         """Open Issues, newest first. Pull requests are excluded."""

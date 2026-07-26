@@ -334,6 +334,8 @@ class LifelogClient(discord.Client):
         self.tree = discord.app_commands.CommandTree(self)
         self._register_commands()
         self._notification_loops: list[tasks.Loop] = []
+        self._web_server = None
+        self._web_task: asyncio.Task | None = None
 
     def _register_commands(self) -> None:
         guild = discord.Object(id=self.config.discord_guild_id)
@@ -360,6 +362,41 @@ class LifelogClient(discord.Client):
                 "applications.commands スコープが含まれているか確認してください。"
             )
         self._start_notification_loops()
+        self._start_web_server()
+
+    def _start_web_server(self) -> None:
+        if not self.config.web_enabled:
+            logger.info("Web画面は無効です（WEB_ENABLED=false）")
+            return
+        # Imported here so the web dependencies are only needed when enabled.
+        import uvicorn
+
+        from app.web_app import create_app
+
+        server = uvicorn.Server(
+            uvicorn.Config(
+                create_app(self.config, self.github_service, self.r2_service),
+                host=self.config.web_host,
+                port=self.config.web_port,
+                log_level="warning",
+                access_log=False,
+            )
+        )
+        self._web_server = server
+
+        async def run() -> None:
+            try:
+                await server.serve()
+            except Exception:
+                # The diary bot keeps working even if the viewer dies.
+                logger.exception("Webサーバーが停止しました")
+
+        self._web_task = asyncio.create_task(run())
+        logger.info(
+            "Web画面を起動しました: http://%s:%s",
+            self.config.web_host,
+            self.config.web_port,
+        )
 
     def _start_notification_loops(self) -> None:
         schedule = [
@@ -388,6 +425,10 @@ class LifelogClient(discord.Client):
     async def close(self) -> None:
         for loop in self._notification_loops:
             loop.cancel()
+        if self._web_server is not None:
+            self._web_server.should_exit = True
+        if self._web_task is not None:
+            self._web_task.cancel()
         if self._http_session is not None:
             await self._http_session.close()
         await super().close()

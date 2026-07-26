@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pager">
+  <a href="/day/{{ prev_day }}">← 前の日</a>
+  <a href="/month/{{ month }}">月の一覧</a>
+  <a href="/day/{{ next_day }}">次の日 →</a>
+</div>
+
+{% if entries %}
+  {% for entry in entries %}
+  <article class="card">
+    <div class="time">{{ entry.time_str }}</div>
+    {% if entry.body %}<p class="body">{{ entry.body }}</p>{% endif %}
+    {% if entry.image_urls %}
+    <div class="shots">
+      {% for url in entry.image_urls %}
+      <a href="{{ url }}" target="_blank" rel="noopener">
+        <img src="{{ url }}" alt="{{ entry.time_str }} の添付画像" loading="lazy">
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+  <p class="muted">画像の表示URLは一時的なものです。時間が経つと読み込めなくなるので、その場合はページを再読み込みしてください。</p>
+{% else %}
+<p class="empty">この日の記録はありません。</p>
+{% endif %}
+{% endblock %}

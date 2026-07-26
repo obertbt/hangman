@@ -132,6 +132,32 @@ def test_load_config_rejects_invalid_log_numbers(key, value):
         load_config(env=env, load_dotenv_file=False)
 
 
+def test_load_config_web_disabled_by_default():
+    config = load_config(env=BASE_ENV, load_dotenv_file=False)
+    assert config.web_enabled is False
+    assert config.web_port == 8787
+    assert config.web_password is None
+
+
+def test_load_config_enables_web_with_password():
+    env = dict(BASE_ENV, WEB_ENABLED="true", WEB_PASSWORD="hunter2hunter2", WEB_PORT="9000")
+    config = load_config(env=env, load_dotenv_file=False)
+    assert config.web_enabled is True
+    assert config.web_port == 9000
+
+
+def test_load_config_requires_password_when_web_enabled():
+    env = dict(BASE_ENV, WEB_ENABLED="true")
+    with pytest.raises(ConfigError, match="WEB_PASSWORD"):
+        load_config(env=env, load_dotenv_file=False)
+
+
+def test_load_config_rejects_short_web_password():
+    env = dict(BASE_ENV, WEB_ENABLED="true", WEB_PASSWORD="short")
+    with pytest.raises(ConfigError, match="8文字以上"):
+        load_config(env=env, load_dotenv_file=False)
+
+
 def test_load_config_summary_disabled_by_default():
     config = load_config(env=BASE_ENV, load_dotenv_file=False)
     assert config.summary_provider == "none"
@@ -208,6 +234,11 @@ def _make_config(**overrides) -> Config:
         log_file=None,
         log_max_bytes=5 * 1024 * 1024,
         log_backup_count=3,
+        web_enabled=False,
+        web_host="127.0.0.1",
+        web_port=8787,
+        web_password=None,
+        web_session_hours=720,
         summary_provider="none",
         summary_timeout_seconds=180,
         ollama_url="http://localhost:11434",

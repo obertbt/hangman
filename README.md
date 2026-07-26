@@ -26,6 +26,7 @@ GitHubの日記ファイルには画像そのものではなく、R2のオブジ
 | `!task` | 投稿をGitHub Issueとして登録 | [7.6](#76-タスクを登録するtask-コマンド) |
 | 定時通知 | 朝は未完了タスク、夜は今日の記録件数 | [7.7](#77-朝夜の定時通知) |
 | AI要約（任意） | 夜の通知に「今日のまとめ」を添える | [7.8](#78-夜の通知にai要約を添える任意) |
+| Web画面（任意） | 日記とタスクをブラウザで閲覧。外出先からも可 | [docs/web-viewer.md](docs/web-viewer.md) |
 | 24時間稼働 | 自動起動・自動復帰の設定 | [10.5](#105-24時間稼働させる) |
 
 ---
@@ -148,6 +149,12 @@ EVENING_NOTIFICATION_TIME=20:00  # 夜の通知時刻（HH:MM・空欄で無効�
 LOG_FILE=                     # ログの出力先（空ならコンソールのみ）。常時稼働時は設定推奨
 LOG_MAX_BYTES=5242880         # ログ1ファイルの上限（既定5MB）
 LOG_BACKUP_COUNT=3            # 保持する世代数
+
+WEB_ENABLED=false             # true でWeb閲覧画面を有効化
+WEB_HOST=0.0.0.0              # 待ち受けアドレス（127.0.0.1 なら本体からのみ）
+WEB_PORT=8787
+WEB_PASSWORD=                 # WEB_ENABLED=true のとき必須（8文字以上）
+WEB_SESSION_HOURS=720         # ログインの保持時間（既定30日）
 
 SUMMARY_PROVIDER=none         # 夜の要約: none / ollama / claude
 SUMMARY_TIMEOUT_SECONDS=180   # 要約生成のタイムアウト秒数
@@ -338,6 +345,18 @@ CPUでの生成には20〜60秒ほどかかりますが、夜1回のバッチ処
 
 `夜の要約は無効です（SUMMARY_PROVIDER=none）` と出る場合は設定が反映されていません。
 
+## 7.9 ブラウザで日記とタスクを見る（任意）
+
+日記とタスクをブラウザから閲覧できるWeb画面を、Botと同じプロセスで動かせます。既定では**無効**です。
+
+- 月の一覧 → 日ごとの日記（画像もその場で表示）
+- 未完了タスク（GitHub Issue）の一覧
+- パスワードでのログインが必須
+
+外出先から見る場合は、ポート開放ではなく**Tailscale**（無料の仮想プライベートネットワーク）を使うため、インターネットには公開されません。
+
+設定と手順は **[docs/web-viewer.md](docs/web-viewer.md)** にまとめています。
+
 ## 8. 動作確認方法
 
 1. `.env` を設定した状態でBotを起動します。
@@ -497,12 +516,17 @@ hearth-life/
 │  ├─ r2_service.py       # R2への画像アップロード・削除・署名付きURL発行
 │  ├─ notifications.py    # 朝・夜の定時通知メッセージの組み立て
 │  ├─ summary_service.py  # 夜の要約（ローカルLLM / Claude API）
+│  ├─ diary.py            # 日記Markdownのパーサー
+│  ├─ web_app.py          # Web閲覧画面（FastAPI）
+│  ├─ web_auth.py         # Web画面のログイン・セッション
+│  ├─ templates/          # Web画面のHTMLテンプレート
 │  └─ models.py           # 共通データ構造
 ├─ tests/                 # pytestによるユニットテスト
 ├─ deploy/
 │  ├─ hearth-bot.service  # systemd用ユニット（Linuxサーバー常時稼働）
 │  └─ run-bot.ps1         # Windowsタスクスケジューラ用の起動スクリプト
 ├─ docs/
+│  ├─ web-viewer.md              # Web画面と外出先アクセス（Tailscale）
 │  ├─ deploy-windows-minipc.md   # WindowsミニPCでの24時間稼働手順
 │  └─ deploy-webarena-indigo.md  # WebARENA Indigoへのデプロイ手順
 ├─ daily/                 # GitHub上に生成される日記ファイルの置き場
@@ -519,6 +543,8 @@ hearth-life/
 
 ## 12. 現時点で実装していないもの
 
+- Web画面からの編集・削除（閲覧専用です）
+- 日記の全文検索
 - AIによる自動タグ付け・分類
 - 月次・週次のまとめ生成
 - 動画・音声・PDF対応
