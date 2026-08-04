@@ -1,27 +1,29 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
-import { PhasePlaceholder } from '@/components/ui/phase-placeholder';
+import { FormMessage } from '@/components/ui/field';
+import { LoginForm } from '@/features/auth/components/login-form';
 
 export const metadata: Metadata = { title: 'ログイン' };
 
-export default function LoginPage() {
+const LINK_ERRORS: Record<string, string> = {
+  invalid_link: 'リンクが正しくありません。もう一度お試しください。',
+  expired_link: 'リンクの有効期限が切れています。もう一度お試しください。',
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; next?: string }>;
+}) {
+  // next はサーバー側で読んでフォームへ渡す。
+  // クライアントで useSearchParams を使うと、フォームが初回の HTML に含まれなくなるため。
+  const { error, next } = await searchParams;
+  const linkError = error ? LINK_ERRORS[error] : undefined;
+
   return (
     <div className="space-y-4">
-      <PhasePlaceholder
-        phase={1}
-        title="ログイン"
-        items={[
-          'メールアドレスとパスワード',
-          'パスワード再設定への導線',
-          'Google ログインは後から追加できる形にする',
-        ]}
-      />
-      <p className="text-center text-sm text-[--color-muted]">
-        <Link href="/signup" className="underline underline-offset-4">
-          新規登録
-        </Link>
-      </p>
+      {linkError ? <FormMessage>{linkError}</FormMessage> : null}
+      <LoginForm next={next} />
     </div>
   );
 }

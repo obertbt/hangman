@@ -15,14 +15,14 @@ export type ReactionType = 'cheer' | 'good_job' | 'amazing' | 'together' | 'stre
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-interface TableShape<Row, Insert, Update> {
+type TableShape<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
   Update: Update;
   Relationships: [];
-}
+};
 
-export interface ProfileRow {
+export type ProfileRow = {
   id: string;
   display_name: string;
   avatar_url: string | null;
@@ -31,9 +31,9 @@ export interface ProfileRow {
   default_visibility: Visibility;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface GroupRow {
+export type GroupRow = {
   id: string;
   name: string;
   description: string | null;
@@ -41,17 +41,17 @@ export interface GroupRow {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface GroupMemberRow {
+export type GroupMemberRow = {
   id: string;
   group_id: string;
   user_id: string;
   role: GroupRole;
   joined_at: string;
-}
+};
 
-export interface GroupInvitationRow {
+export type GroupInvitationRow = {
   id: string;
   group_id: string;
   token: string;
@@ -61,9 +61,9 @@ export interface GroupInvitationRow {
   used_count: number;
   revoked_at: string | null;
   created_at: string;
-}
+};
 
-export interface CategoryRow {
+export type CategoryRow = {
   id: string;
   user_id: string | null;
   group_id: string | null;
@@ -73,9 +73,9 @@ export interface CategoryRow {
   sort_order: number;
   is_active: boolean;
   created_at: string;
-}
+};
 
-export interface ActivitySessionRow {
+export type ActivitySessionRow = {
   id: string;
   user_id: string;
   category_id: string;
@@ -89,9 +89,9 @@ export interface ActivitySessionRow {
   duration_seconds: number | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface ActivityPostRow {
+export type ActivityPostRow = {
   id: string;
   user_id: string;
   session_id: string | null;
@@ -107,22 +107,22 @@ export interface ActivityPostRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-}
+};
 
-export interface PostAllowedUserRow {
+export type PostAllowedUserRow = {
   post_id: string;
   user_id: string;
-}
+};
 
-export interface ReactionRow {
+export type ReactionRow = {
   id: string;
   post_id: string;
   user_id: string;
   reaction_type: ReactionType;
   created_at: string;
-}
+};
 
-export interface CommentRow {
+export type CommentRow = {
   id: string;
   post_id: string;
   user_id: string;
@@ -131,9 +131,9 @@ export interface CommentRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-}
+};
 
-export interface DailyGoalRow {
+export type DailyGoalRow = {
   id: string;
   user_id: string;
   goal_date: string;
@@ -141,9 +141,9 @@ export interface DailyGoalRow {
   message: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface WeeklyGoalRow {
+export type WeeklyGoalRow = {
   id: string;
   user_id: string;
   week_start_date: string;
@@ -152,10 +152,10 @@ export interface WeeklyGoalRow {
   message: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
 /** get_active_group_members() の戻り値 */
-export interface ActiveGroupMember {
+export type ActiveGroupMember = {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
@@ -165,23 +165,23 @@ export interface ActiveGroupMember {
   status: Extract<SessionStatus, 'running' | 'paused'>;
   started_at: string;
   total_paused_seconds: number;
-}
+};
 
 /** get_invitation_preview() の戻り値 */
-export interface InvitationPreview {
+export type InvitationPreview = {
   group_id: string | null;
   group_name: string | null;
   inviter_name: string | null;
   member_count: number;
   is_valid: boolean;
   reason: 'ok' | 'not_found' | 'expired' | 'revoked' | 'exhausted';
-}
+};
 
 type Insertable<Row, Required extends keyof Row, Generated extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required | Generated>> &
   Partial<Pick<Row, Generated>>;
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: TableShape<
@@ -265,7 +265,9 @@ export interface Database {
         Partial<WeeklyGoalRow>
       >;
     };
-    Views: Record<never, never>;
+    Views: {
+      [_ in never]: never;
+    };
     Functions: {
       create_group: {
         Args: { p_name: string; p_description?: string | null };
@@ -280,7 +282,7 @@ export interface Database {
         Returns: InvitationPreview[];
       };
       get_active_group_members: {
-        Args: Record<string, never>;
+        Args: Record<PropertyKey, never>;
         Returns: ActiveGroupMember[];
       };
       set_comment_hidden: {
@@ -288,7 +290,11 @@ export interface Database {
         Returns: void;
       };
     };
-    Enums: Record<never, never>;
-    CompositeTypes: Record<never, never>;
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
-}
+};

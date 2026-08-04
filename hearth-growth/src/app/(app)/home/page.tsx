@@ -3,20 +3,24 @@ import type { Metadata } from 'next';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardTitle } from '@/components/ui/card';
 import { PhasePlaceholder } from '@/components/ui/phase-placeholder';
+import { requireProfile } from '@/features/auth/queries';
 import { formatDuration } from '@/lib/date/duration';
-import { getToday, formatDateLabel, DEFAULT_TIMEZONE } from '@/lib/date/timezone';
-import { getCurrentUser } from '@/lib/supabase/server';
+import { formatDateLabel, getToday } from '@/lib/date/timezone';
 
 export const metadata: Metadata = { title: 'ホーム' };
 
 export default async function HomePage() {
-  // Phase 1 以降で profiles から表示名とタイムゾーンを読む。
-  const user = await getCurrentUser();
-  const today = getToday(DEFAULT_TIMEZONE);
+  const profile = await requireProfile();
+  // 「今日」はユーザーのタイムゾーンで決める（15.1）
+  const today = getToday(profile.timezone);
 
   return (
     <>
-      <PageHeader title={formatDateLabel(today)} description="今日も、少しずつ。" settingsLink />
+      <PageHeader
+        title={formatDateLabel(today)}
+        description={`${profile.display_name}さん、今日も少しずつ。`}
+        settingsLink
+      />
 
       <section aria-label="今日の自分" className="grid grid-cols-2 gap-3">
         <Card>
@@ -52,12 +56,6 @@ export default async function HomePage() {
           items={['グループメンバーと自分の活動記録', '新しい順に20件ずつ読み込む']}
         />
       </div>
-
-      {user ? null : (
-        <p className="mt-6 text-xs text-[--color-muted]">
-          Supabase 未接続のため、ログイン情報は表示していません。
-        </p>
-      )}
     </>
   );
 }

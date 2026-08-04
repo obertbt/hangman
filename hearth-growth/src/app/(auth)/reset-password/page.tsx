@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
 
-import { PhasePlaceholder } from '@/components/ui/phase-placeholder';
+import { ResetRequestForm } from '@/features/auth/components/reset-request-form';
 
 export const metadata: Metadata = { title: 'パスワード再設定' };
 
 export default function ResetPasswordPage() {
   return (
-    <PhasePlaceholder
-      phase={1}
-      title="パスワード再設定"
-      items={['再設定メールの送信', 'メール内リンクからの新パスワード設定']}
-    />
+    <div className="space-y-4">
+      <p className="text-sm text-[--color-muted]">
+        登録したメールアドレスへ、パスワード再設定用のリンクをお送りします。
+      </p>
+      <ResetRequestForm />
+    </div>
   );
 }
