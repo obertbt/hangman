@@ -1,0 +1,86 @@
+@import 'tailwindcss';
+
+/*
+ * 16.1 デザイン思想: 静かで温かい。
+ * 彩度を抑えた暖色を土台にし、強い原色は「活動中」の表現だけに使う。
+ */
+@theme {
+  --color-hearth-50: #faf7f2;
+  --color-hearth-100: #f3ede3;
+  --color-hearth-200: #e6dbc9;
+  --color-hearth-300: #d4c2a5;
+  --color-hearth-400: #bda37e;
+  --color-hearth-500: #a88a63;
+  --color-hearth-600: #8f7150;
+  --color-hearth-700: #735a42;
+  --color-hearth-800: #4f3f30;
+  --color-hearth-900: #33291f;
+  --color-hearth-950: #201a14;
+
+  /* 活動中であることを示す唯一のアクセント */
+  --color-ember-400: #e8a06a;
+  --color-ember-500: #d9834a;
+  --color-ember-600: #b96a37;
+
+  --font-sans:
+    var(--font-noto-sans-jp), ui-sans-serif, system-ui, 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
+    sans-serif;
+}
+
+:root {
+  --background: var(--color-hearth-50);
+  --surface: #ffffff;
+  --foreground: var(--color-hearth-900);
+  --muted: #7a6b5c;
+  --border: var(--color-hearth-200);
+  /* 下部ナビゲーションぶんの余白（モバイル） */
+  --bottom-nav-height: 4.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-hearth-950);
+    --surface: #2a221b;
+    --foreground: var(--color-hearth-100);
+    --muted: #a3937f;
+    --border: #3d3228;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+}
+
+html {
+  /* iOS のアドレスバー分を含めた高さ */
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  /* モバイルで横スクロールを起こさない */
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* キーボード操作時のフォーカスを常に見える状態にしておく */
+:focus-visible {
+  outline: 2px solid var(--color-ember-500);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

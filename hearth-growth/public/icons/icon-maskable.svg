@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hearth Growth">
+  <rect width="512" height="512" fill="#faf7f2"/>
+  <path d="M256 140c34 44 53 78 53 109a53 53 0 1 1-106 0c0-31 19-65 53-109z" fill="#d9834a"/>
+  <rect x="176" y="344" width="160" height="18" rx="9" fill="#a88a63"/>
+  <rect x="202" y="382" width="108" height="18" rx="9" fill="#d4c2a5"/>
+</svg>

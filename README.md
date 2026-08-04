@@ -31,6 +31,17 @@ GitHubの日記ファイルには画像そのものではなく、R2のオブジ
 
 ---
 
+## 関連プロジェクト: Hearth Growth（Webアプリ）
+
+Discord ではなく Web 画面から、親しい人と活動時間を共有するライフログアプリを
+[`hearth-growth/`](hearth-growth/) で開発しています（Next.js + Supabase）。
+この Bot とは別プロダクトで、依存関係も設定も分かれています。
+
+- 使い方とセットアップ: [hearth-growth/README.md](hearth-growth/README.md)
+- 設計とER図: [hearth-growth/docs/DESIGN.md](hearth-growth/docs/DESIGN.md)
+
+---
+
 ## 1. 必要なサービス
 
 - Discordサーバーと、そこに参加させるDiscord Bot
