@@ -16,6 +16,6 @@ export const config = {
     /*
      * 静的ファイルと画像以外のすべてのパスで認証セッションを更新する。
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

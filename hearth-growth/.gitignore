@@ -42,3 +42,9 @@ next-env.d.ts
 
 # 設定例はコミットする
 !.env.example
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

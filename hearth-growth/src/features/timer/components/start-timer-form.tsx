@@ -64,13 +64,15 @@ export function StartTimerForm({ categories }: { categories: CategoryRow[] }) {
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => setCategoryId(category.id)}
+                // 選択中は色そのものではなく淡い面と枠で示す。
+                // 白文字を任意の色の上に載せると、色によって読めなくなるため。
                 className={cn(
-                  'flex min-h-20 flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-xs transition-colors',
-                  isSelected
-                    ? 'border-transparent text-white'
-                    : 'border-[--color-border] bg-[--color-surface]',
+                  'flex min-h-20 flex-col items-center justify-center gap-1 rounded-2xl border-2 p-2 text-xs font-medium transition-colors',
+                  isSelected ? 'border-current' : 'border-[--color-border] bg-[--color-surface]',
                 )}
-                style={isSelected ? { backgroundColor: category.color } : undefined}
+                style={
+                  isSelected ? { backgroundColor: `${category.color}1f`, color: category.color } : undefined
+                }
               >
                 <span aria-hidden className="text-xl">
                   {category.icon}

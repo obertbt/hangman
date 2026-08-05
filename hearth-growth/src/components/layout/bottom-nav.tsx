@@ -34,7 +34,7 @@ export function BottomNav() {
                 <Link
                   href={href}
                   aria-label={label}
-                  className="bg-ember-500 hover:bg-ember-600 flex h-16 w-16 flex-col items-center justify-center rounded-full text-white shadow-lg transition-colors"
+                  className="bg-ember-700 hover:bg-ember-800 flex h-16 w-16 flex-col items-center justify-center rounded-full text-white shadow-lg transition-colors"
                 >
                   <Icon aria-hidden size={22} />
                   <span className="mt-0.5 text-[10px] font-medium">{label}</span>

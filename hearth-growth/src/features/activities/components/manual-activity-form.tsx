@@ -102,11 +102,14 @@ export function ManualActivityForm({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => setCategoryId(category.id)}
+                // 選択中は色そのものではなく淡い面と枠で示す（読みやすさのため）
                 className={cn(
-                  'flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-xs',
-                  isSelected ? 'border-transparent text-white' : 'border-[--color-border]',
+                  'flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl border-2 p-2 text-xs',
+                  isSelected ? 'border-current font-medium' : 'border-[--color-border]',
                 )}
-                style={isSelected ? { backgroundColor: category.color } : undefined}
+                style={
+                  isSelected ? { backgroundColor: `${category.color}1f`, color: category.color } : undefined
+                }
               >
                 <span aria-hidden className="text-lg">
                   {category.icon}

@@ -5,7 +5,7 @@ import { env } from '@/lib/env';
 import type { Database } from '@/types/database.types';
 
 /** ログインなしで開けるパス。招待リンクはログイン前に内容だけ確認できる。 */
-const PUBLIC_PATHS = ['/login', '/signup', '/reset-password', '/invite', '/auth'];
+const PUBLIC_PATHS = ['/login', '/signup', '/reset-password', '/invite', '/auth', '/offline'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));

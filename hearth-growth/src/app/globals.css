@@ -21,6 +21,13 @@
   --color-ember-400: #e8a06a;
   --color-ember-500: #d9834a;
   --color-ember-600: #b96a37;
+  /*
+   * 白文字を載せる面にはこちらを使う。
+   * ember-500 に白文字だと 2.87:1 しかなく、WCAG AA（4.5:1）に届かない。
+   * ember-700 なら約 4.96:1。
+   */
+  --color-ember-700: #a85c2e;
+  --color-ember-800: #8d4a22;
 
   --font-sans:
     var(--font-noto-sans-jp), ui-sans-serif, system-ui, 'Hiragino Kaku Gothic ProN', 'Yu Gothic',

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Noto_Sans_JP } from 'next/font/google';
 
+import { ServiceWorker } from '@/components/layout/service-worker';
+
 import './globals.css';
 
 const notoSansJp = Noto_Sans_JP({
@@ -41,7 +43,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja" className={notoSansJp.variable}>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }
