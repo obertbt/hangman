@@ -374,6 +374,43 @@ export type Database = {
         Args: { p_post_id: string };
         Returns: void;
       };
+      user_week_start: {
+        Args: { p_user_id?: string };
+        Returns: string;
+      };
+      get_period_summary: {
+        Args: { p_from: string; p_to: string };
+        Returns: { total_seconds: number; post_count: number; active_days: number }[];
+      };
+      get_daily_totals: {
+        Args: { p_from: string; p_to: string };
+        Returns: { activity_date: string; total_seconds: number; post_count: number }[];
+      };
+      get_category_summary: {
+        Args: { p_from: string; p_to: string };
+        Returns: {
+          category_id: string;
+          category_name: string;
+          category_icon: string;
+          category_color: string;
+          total_seconds: number;
+          post_count: number;
+        }[];
+      };
+      get_current_streak: {
+        Args: { p_user_id?: string };
+        Returns: number;
+      };
+      get_group_week_summary: {
+        Args: { p_group_id: string; p_week_start?: string | null };
+        Returns: {
+          user_id: string;
+          display_name: string;
+          avatar_url: string | null;
+          total_seconds: number;
+          active_days: number;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

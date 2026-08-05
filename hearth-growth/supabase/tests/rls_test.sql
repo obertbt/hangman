@@ -754,6 +754,99 @@ $$;
 
 -- -----------------------------------------------------------------------------
 \echo ''
+\echo '== 集計'
+-- -----------------------------------------------------------------------------
+reset role;
+-- 集計だけを見たいので、これまでの記録を片付けてから作り直す
+delete from public.activity_posts where user_id = pg_temp.uuid_val('alice');
+
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+-- 今日30分 + 今日15分、昨日1時間、3日前2時間
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 1800);
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 900);
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 3600,
+  p_activity_date := public.user_today() - 1);
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 7200,
+  p_activity_date := public.user_today() - 3);
+
+select pg_temp.check(
+  (select total_seconds from public.get_period_summary(public.user_today(), public.user_today())) = 2700,
+  '今日の合計は 30分 + 15分 = 45分');
+select pg_temp.check(
+  (select post_count from public.get_period_summary(public.user_today(), public.user_today())) = 2,
+  '今日の件数を数えられる');
+select pg_temp.check(
+  (select active_days from public.get_period_summary(public.user_today() - 6, public.user_today())) = 3,
+  '記録した日数を数えられる（同じ日の2件は1日と数える）');
+
+-- 連続記録: 今日と昨日があるので2日。3日前は間が空いているので数えない。
+select pg_temp.check(public.get_current_streak() = 2,
+  '連続記録は途切れたところで止まる');
+
+-- 今日の記録を消すと、昨日までの連続として1日になる
+reset role;
+update public.activity_posts set deleted_at = now()
+where user_id = pg_temp.uuid_val('alice') and activity_date = public.user_today(pg_temp.uuid_val('alice'));
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+select pg_temp.check(public.get_current_streak() = 1,
+  '今日まだ記録が無くても、昨日まで続いていれば途切れない');
+select pg_temp.check(
+  (select total_seconds from public.get_period_summary(public.user_today(), public.user_today())) = 0,
+  '論理削除した記録は集計に入らない');
+
+-- カテゴリー別
+select pg_temp.check(
+  (select total_seconds from public.get_category_summary(public.user_today() - 6, public.user_today())
+    where category_id = pg_temp.uuid_val('category')) = 10800,
+  'カテゴリー別の合計を出せる（1時間 + 2時間）');
+
+-- 他人の連続記録は返さない
+select pg_temp.check(public.get_current_streak(pg_temp.uuid_val('bob')) = 0,
+  '他人の連続記録は取得できない');
+
+-- 週の始まりは月曜
+select pg_temp.check(
+  extract(isodow from public.user_week_start()) = 1,
+  '週の始まりは月曜日');
+
+-- グループの今週は、そのグループへ公開された記録だけを数える
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 600,
+  p_visibility := 'private');
+select public.create_activity_post(
+  p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 1200,
+  p_visibility := 'group', p_group_id := pg_temp.uuid_val('group'));
+
+select pg_temp.check(
+  (select total_seconds from public.get_group_week_summary(pg_temp.uuid_val('group'))
+    where user_id = pg_temp.uuid_val('alice')) = 1200,
+  'グループの集計に非公開の記録は入らない');
+
+-- グループ外からは集計を取れない
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.get_group_week_summary(pg_temp.uuid_val('group'));
+    raise exception 'FAILED: グループ外から集計を取れてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   グループ外のユーザーはグループの集計を取れない';
+  end;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+\echo ''
 \echo '== 招待の期限・失効・上限'
 -- -----------------------------------------------------------------------------
 reset role;
