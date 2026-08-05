@@ -532,6 +532,177 @@ select pg_temp.check((select count(*) from public.get_active_group_members()) = 
 
 -- -----------------------------------------------------------------------------
 \echo ''
+\echo '== 活動記録の作成（RPC）'
+-- -----------------------------------------------------------------------------
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+-- 手動記録: カテゴリーと時間だけで作れる
+insert into v select 'manual_post',
+  public.create_activity_post(p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 1800)::text;
+
+select pg_temp.check(
+  (select duration_seconds = 1800 and visibility = 'private' and session_id is null
+     from public.activity_posts where id = pg_temp.uuid_val('manual_post')),
+  '手動記録はカテゴリーと時間だけで作れる');
+
+select pg_temp.check(
+  (select activity_date from public.activity_posts where id = pg_temp.uuid_val('manual_post'))
+    = public.user_today(pg_temp.uuid_val('alice')),
+  'activity_date はユーザーのタイムゾーンでの今日になる');
+
+-- 未来の日付、範囲外の時間は受け付けない
+do $$
+begin
+  begin
+    perform public.create_activity_post(
+      p_category_id := pg_temp.uuid_val('category'),
+      p_duration_seconds := 600,
+      p_activity_date := (public.user_today() + 1));
+    raise exception 'FAILED: 未来の日付で記録を作れてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   未来の日付では記録を作れない';
+  end;
+
+  begin
+    perform public.create_activity_post(
+      p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 86401);
+    raise exception 'FAILED: 24時間を超える記録を作れてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   24時間を超える記録は作れない';
+  end;
+end;
+$$;
+
+-- タイマー由来の記録: 活動時間はセッションから取る（クライアントの値を使わない）
+insert into v select 'timer_post',
+  public.create_activity_post(
+    p_session_id := pg_temp.uuid_val('session'),
+    p_duration_seconds := 999999,   -- 無視されるべき値
+    p_visibility := 'group',
+    p_group_id := pg_temp.uuid_val('group'))::text;
+
+select pg_temp.check(
+  (select duration_seconds between 538 and 542
+     from public.activity_posts where id = pg_temp.uuid_val('timer_post')),
+  'タイマー由来の記録は、渡された活動時間ではなくセッションの値を使う');
+
+-- 同じセッションから二重に記録は作れない
+do $$
+begin
+  begin
+    perform public.create_activity_post(p_session_id := pg_temp.uuid_val('session'));
+    raise exception 'FAILED: 同じセッションから2つ記録を作れてしまった';
+  exception when raise_exception or unique_violation then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   同じセッションから記録は1つしか作れない';
+  end;
+end;
+$$;
+
+-- 所属していないグループへは公開できない / 届かない相手は宛先にできない
+do $$
+begin
+  begin
+    perform public.create_activity_post(
+      p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 600,
+      p_visibility := 'selected', p_allowed_user_ids := array[pg_temp.uuid_val('carol')]);
+    raise exception 'FAILED: 同じグループにいない相手を宛先にできてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   同じグループにいない相手は宛先にできない';
+  end;
+
+  begin
+    perform public.create_activity_post(
+      p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 600,
+      p_visibility := 'selected', p_allowed_user_ids := array[]::uuid[]);
+    raise exception 'FAILED: 宛先なしの selected を作れてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   宛先なしの selected 公開は作れない';
+  end;
+end;
+$$;
+
+-- 編集: 公開範囲を変えると宛先も入れ替わる
+select public.update_activity_post(
+  p_post_id := pg_temp.uuid_val('manual_post'),
+  p_title := '英単語',
+  p_visibility := 'selected',
+  p_allowed_user_ids := array[pg_temp.uuid_val('bob')]);
+
+select pg_temp.check(
+  (select count(*) from public.post_allowed_users
+    where post_id = pg_temp.uuid_val('manual_post')) = 1,
+  '編集で selected にすると宛先が登録される');
+
+select public.update_activity_post(
+  p_post_id := pg_temp.uuid_val('manual_post'),
+  p_visibility := 'private');
+
+select pg_temp.check(
+  (select count(*) from public.post_allowed_users
+    where post_id = pg_temp.uuid_val('manual_post')) = 0,
+  'private に戻すと宛先が消える');
+
+-- タイマー由来の記録は、編集でも時間を書き換えられない
+select public.update_activity_post(
+  p_post_id := pg_temp.uuid_val('timer_post'),
+  p_duration_seconds := 1,
+  p_visibility := 'private');
+select pg_temp.check(
+  (select duration_seconds between 538 and 542
+     from public.activity_posts where id = pg_temp.uuid_val('timer_post')),
+  'タイマー由来の記録は編集でも活動時間が変わらない');
+
+-- 他人の記録は編集も削除もできない
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.update_activity_post(
+      p_post_id := pg_temp.uuid_val('manual_post'), p_visibility := 'private');
+    raise exception 'FAILED: 他人の記録を編集できてしまった';
+  exception when no_data_found then
+    raise notice '  ok   他人の記録は編集できない';
+  end;
+
+  begin
+    perform public.delete_activity_post(pg_temp.uuid_val('manual_post'));
+    raise exception 'FAILED: 他人の記録を削除できてしまった';
+  exception when no_data_found then
+    raise notice '  ok   他人の記録は削除できない';
+  end;
+end;
+$$;
+
+-- 論理削除
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+select public.delete_activity_post(pg_temp.uuid_val('manual_post'));
+select pg_temp.check(
+  (select deleted_at is not null from public.activity_posts where id = pg_temp.uuid_val('manual_post')),
+  'delete_activity_post は行を消さず deleted_at を立てる');
+
+do $$
+begin
+  begin
+    perform public.delete_activity_post(pg_temp.uuid_val('manual_post'));
+    raise exception 'FAILED: 削除済みの記録をもう一度削除できてしまった';
+  exception when no_data_found then
+    raise notice '  ok   削除済みの記録は二重に削除されない';
+  end;
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+\echo ''
 \echo '== 招待の期限・失効・上限'
 -- -----------------------------------------------------------------------------
 reset role;

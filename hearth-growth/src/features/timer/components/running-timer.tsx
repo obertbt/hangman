@@ -38,14 +38,22 @@ export function RunningTimer({ session, category, serverNow }: RunningTimerProps
   const isPaused = session.status === 'paused';
   const isStale = isStaleSession(elapsedAtRender);
 
-  const run = (action: () => Promise<{ ok: boolean; message?: string }>) => {
+  const run = (
+    action: () => Promise<{ ok: boolean; message?: string }>,
+    /** 終了後は活動終了画面へ送る。取り消しや一時停止では、その場で更新する。 */
+    nextPath?: string,
+  ) => {
     setError(null);
     startTransition(async () => {
       const result = await action();
-      if (result.ok) {
-        router.refresh();
-      } else {
+      if (!result.ok) {
         setError(result.message ?? null);
+        return;
+      }
+      if (nextPath) {
+        router.push(nextPath);
+      } else {
+        router.refresh();
       }
     });
   };
@@ -64,8 +72,10 @@ export function RunningTimer({ session, category, serverNow }: RunningTimerProps
         <StaleSessionNotice
           elapsed={elapsedAtRender}
           disabled={isPending}
-          onFinishNow={() => run(() => completeSessionAction({ sessionId: session.id }))}
-          onFinishAt={(endedAt) => run(() => completeSessionAction({ sessionId: session.id, endedAt }))}
+          onFinishNow={() => run(() => completeSessionAction({ sessionId: session.id }), '/timer/finish')}
+          onFinishAt={(endedAt) =>
+            run(() => completeSessionAction({ sessionId: session.id, endedAt }), '/timer/finish')
+          }
           startedAt={session.started_at}
         />
       ) : null}
@@ -118,7 +128,7 @@ export function RunningTimer({ session, category, serverNow }: RunningTimerProps
           size="lg"
           block
           disabled={isPending}
-          onClick={() => run(() => completeSessionAction({ sessionId: session.id }))}
+          onClick={() => run(() => completeSessionAction({ sessionId: session.id }), '/timer/finish')}
         >
           終了する
         </Button>

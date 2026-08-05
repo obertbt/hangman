@@ -338,6 +338,41 @@ export type Database = {
         Args: { p_session_id: string };
         Returns: void;
       };
+      user_today: {
+        Args: { p_user_id?: string };
+        Returns: string;
+      };
+      create_activity_post: {
+        Args: {
+          p_category_id?: string | null;
+          p_session_id?: string | null;
+          p_title?: string | null;
+          p_body?: string | null;
+          p_duration_seconds?: number | null;
+          p_activity_date?: string | null;
+          p_visibility?: Visibility;
+          p_group_id?: string | null;
+          p_allowed_user_ids?: string[] | null;
+        };
+        Returns: string;
+      };
+      update_activity_post: {
+        Args: {
+          p_post_id: string;
+          p_title?: string | null;
+          p_body?: string | null;
+          p_duration_seconds?: number | null;
+          p_activity_date?: string | null;
+          p_visibility?: Visibility;
+          p_group_id?: string | null;
+          p_allowed_user_ids?: string[] | null;
+        };
+        Returns: void;
+      };
+      delete_activity_post: {
+        Args: { p_post_id: string };
+        Returns: void;
+      };
     };
     Enums: {
       [_ in never]: never;
