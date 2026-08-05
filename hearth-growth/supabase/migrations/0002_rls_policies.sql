@@ -279,18 +279,26 @@ create policy "activity_sessions_delete_own" on public.activity_sessions
 -- -----------------------------------------------------------------------------
 -- activity_posts
 -- -----------------------------------------------------------------------------
+-- 投稿者は自分の投稿を常に読める（論理削除したものも含む）。
+-- ここで `deleted_at is null` を投稿者にも掛けると、deleted_at を立てた瞬間に
+-- 新しい行が SELECT ポリシーを満たさなくなり、論理削除の UPDATE 自体が
+-- 「new row violates row-level security policy」で失敗する。
+-- 他人からは、論理削除した投稿は見えない。
+-- 一覧を出す側は `deleted_at is null` で絞ること。
 create policy "activity_posts_select_visible" on public.activity_posts
   for select to authenticated
   using (
-    deleted_at is null
-    and (
-      user_id = (select auth.uid())
-      or (visibility = 'group' and public.is_group_member(group_id))
-      or (
-        visibility = 'selected'
-        and exists (
-          select 1 from public.post_allowed_users a
-          where a.post_id = id and a.user_id = (select auth.uid())
+    user_id = (select auth.uid())
+    or (
+      deleted_at is null
+      and (
+        (visibility = 'group' and public.is_group_member(group_id))
+        or (
+          visibility = 'selected'
+          and exists (
+            select 1 from public.post_allowed_users a
+            where a.post_id = id and a.user_id = (select auth.uid())
+          )
         )
       )
     )
@@ -356,15 +364,16 @@ create policy "reactions_delete_own" on public.reactions
 --   非表示コメントは、コメント本人と投稿者にだけ見える。
 --   投稿者による非表示化は set_comment_hidden() で行う（本文は変更できない）。
 -- -----------------------------------------------------------------------------
+-- コメントも同じ理由で、本人には常に見えるようにしておく
+-- （そうしないと本人が deleted_at を立てられない）。
 create policy "comments_select_visible_post" on public.comments
   for select to authenticated
   using (
-    deleted_at is null
-    and public.can_view_post(post_id)
-    and (
-      not is_hidden
-      or user_id = (select auth.uid())
-      or public.is_post_owner(post_id)
+    user_id = (select auth.uid())
+    or (
+      deleted_at is null
+      and public.can_view_post(post_id)
+      and (not is_hidden or public.is_post_owner(post_id))
     )
   );
 

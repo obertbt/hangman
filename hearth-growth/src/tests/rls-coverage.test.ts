@@ -85,4 +85,27 @@ describe('公開範囲の不変条件', () => {
     expect(policy).toContain("visibility = 'selected'");
     expect(policy).toContain('deleted_at is null');
   });
+
+  /**
+   * 投稿者への `deleted_at is null` の適用は、論理削除そのものを壊す。
+   * deleted_at を立てた瞬間に新しい行が SELECT ポリシーを満たさなくなり、
+   * UPDATE が「new row violates row-level security policy」で失敗するため。
+   * 実挙動は supabase/tests/rls_test.sql で確認している。
+   */
+  it('投稿者は deleted_at の条件より先に無条件で許可されている', () => {
+    const policy = rlsSql.match(/create policy "activity_posts_select_visible"[\s\S]*?;\n/)?.[0] ?? '';
+    const ownerCheck = policy.indexOf('user_id = (select auth.uid())');
+    const deletedCheck = policy.indexOf('deleted_at is null');
+    expect(ownerCheck).toBeGreaterThan(-1);
+    expect(deletedCheck).toBeGreaterThan(-1);
+    expect(ownerCheck).toBeLessThan(deletedCheck);
+  });
+
+  it('コメントの SELECT ポリシーも本人を無条件で許可している', () => {
+    const policy = rlsSql.match(/create policy "comments_select_visible_post"[\s\S]*?;\n/)?.[0] ?? '';
+    const ownerCheck = policy.indexOf('user_id = (select auth.uid())');
+    const deletedCheck = policy.indexOf('deleted_at is null');
+    expect(ownerCheck).toBeGreaterThan(-1);
+    expect(ownerCheck).toBeLessThan(deletedCheck);
+  });
 });

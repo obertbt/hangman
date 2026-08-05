@@ -15,11 +15,20 @@ export type ReactionType = 'cheer' | 'good_job' | 'amazing' | 'together' | 'stre
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-type TableShape<Row, Insert, Update> = {
+type Relationship<Column extends string, Referenced extends string> = {
+  foreignKeyName: string;
+  columns: [Column];
+  isOneToOne: false;
+  referencedRelation: Referenced;
+  referencedColumns: ['id'];
+};
+
+type TableShape<Row, Insert, Update, Relationships extends readonly unknown[] = []> = {
   Row: Row;
   Insert: Insert;
   Update: Update;
-  Relationships: [];
+  /** 埋め込み select（`profiles(*)` など）の解決に使う外部キー情報 */
+  Relationships: Relationships;
 };
 
 export type ProfileRow = {
@@ -192,12 +201,14 @@ export type Database = {
       groups: TableShape<
         GroupRow,
         Insertable<GroupRow, 'name' | 'owner_id', 'id' | 'created_at' | 'updated_at'>,
-        Partial<GroupRow>
+        Partial<GroupRow>,
+        [Relationship<'owner_id', 'profiles'>]
       >;
       group_members: TableShape<
         GroupMemberRow,
         Insertable<GroupMemberRow, 'group_id' | 'user_id', 'id' | 'joined_at'>,
-        Partial<GroupMemberRow>
+        Partial<GroupMemberRow>,
+        [Relationship<'group_id', 'groups'>, Relationship<'user_id', 'profiles'>]
       >;
       group_invitations: TableShape<
         GroupInvitationRow,
@@ -206,12 +217,14 @@ export type Database = {
           'group_id' | 'invited_by',
           'id' | 'token' | 'expires_at' | 'max_uses' | 'used_count' | 'created_at'
         >,
-        Partial<GroupInvitationRow>
+        Partial<GroupInvitationRow>,
+        [Relationship<'group_id', 'groups'>, Relationship<'invited_by', 'profiles'>]
       >;
       categories: TableShape<
         CategoryRow,
         Insertable<CategoryRow, 'name', 'id' | 'icon' | 'color' | 'sort_order' | 'is_active' | 'created_at'>,
-        Partial<CategoryRow>
+        Partial<CategoryRow>,
+        [Relationship<'user_id', 'profiles'>, Relationship<'group_id', 'groups'>]
       >;
       activity_sessions: TableShape<
         ActivitySessionRow,
@@ -220,7 +233,8 @@ export type Database = {
           'user_id' | 'category_id',
           'id' | 'status' | 'started_at' | 'total_paused_seconds' | 'created_at' | 'updated_at'
         >,
-        Partial<ActivitySessionRow>
+        Partial<ActivitySessionRow>,
+        [Relationship<'user_id', 'profiles'>, Relationship<'category_id', 'categories'>]
       >;
       activity_posts: TableShape<
         ActivityPostRow,
@@ -229,13 +243,25 @@ export type Database = {
           'user_id' | 'category_id' | 'duration_seconds' | 'activity_date',
           'id' | 'visibility' | 'created_at' | 'updated_at'
         >,
-        Partial<ActivityPostRow>
+        Partial<ActivityPostRow>,
+        [
+          Relationship<'user_id', 'profiles'>,
+          Relationship<'category_id', 'categories'>,
+          Relationship<'group_id', 'groups'>,
+          Relationship<'session_id', 'activity_sessions'>,
+        ]
       >;
-      post_allowed_users: TableShape<PostAllowedUserRow, PostAllowedUserRow, Partial<PostAllowedUserRow>>;
+      post_allowed_users: TableShape<
+        PostAllowedUserRow,
+        PostAllowedUserRow,
+        Partial<PostAllowedUserRow>,
+        [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
+      >;
       reactions: TableShape<
         ReactionRow,
         Insertable<ReactionRow, 'post_id' | 'user_id' | 'reaction_type', 'id' | 'created_at'>,
-        Partial<ReactionRow>
+        Partial<ReactionRow>,
+        [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
       >;
       comments: TableShape<
         CommentRow,
@@ -244,7 +270,8 @@ export type Database = {
           'post_id' | 'user_id' | 'body',
           'id' | 'is_hidden' | 'created_at' | 'updated_at'
         >,
-        Partial<CommentRow>
+        Partial<CommentRow>,
+        [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
       >;
       daily_goals: TableShape<
         DailyGoalRow,
@@ -253,7 +280,8 @@ export type Database = {
           'user_id' | 'goal_date' | 'target_seconds',
           'id' | 'created_at' | 'updated_at'
         >,
-        Partial<DailyGoalRow>
+        Partial<DailyGoalRow>,
+        [Relationship<'user_id', 'profiles'>]
       >;
       weekly_goals: TableShape<
         WeeklyGoalRow,
@@ -262,7 +290,8 @@ export type Database = {
           'user_id' | 'week_start_date' | 'target_seconds',
           'id' | 'created_at' | 'updated_at'
         >,
-        Partial<WeeklyGoalRow>
+        Partial<WeeklyGoalRow>,
+        [Relationship<'user_id', 'profiles'>, Relationship<'category_id', 'categories'>]
       >;
     };
     Views: {
