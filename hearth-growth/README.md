@@ -163,6 +163,9 @@ RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確
 
 `seed.sql` はローカル専用です（テストユーザー 2 名とグループを 1 つ作ります）。
 
+> スマートフォンだけで公開して確認する手順は [docs/DEPLOY.md](docs/DEPLOY.md) にあります。
+> Supabase の SQL Editor へ1回貼るだけで済む [`supabase/setup.sql`](supabase/setup.sql) も用意しています。
+
 ### 4. 起動
 
 ```bash
