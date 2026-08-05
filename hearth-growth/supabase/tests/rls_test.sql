@@ -286,6 +286,39 @@ begin
 end;
 $$;
 
+-- リアクションは付け替えられる（1件のまま種類だけ変わる）
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+
+update public.reactions
+set reaction_type = 'streak'
+where post_id = pg_temp.uuid_val('group_post') and user_id = :'bob';
+
+select pg_temp.check(
+  (select count(*) from public.reactions where post_id = pg_temp.uuid_val('group_post')) = 1
+  and (select reaction_type from public.reactions
+        where post_id = pg_temp.uuid_val('group_post') and user_id = :'bob') = 'streak',
+  'リアクションは付け替えても1件のまま');
+
+-- 取り消せる／他人のリアクションは消せない
+delete from public.reactions where post_id = pg_temp.uuid_val('group_post') and user_id = :'bob';
+select pg_temp.check(
+  (select count(*) from public.reactions where post_id = pg_temp.uuid_val('group_post')) = 0,
+  '自分のリアクションは取り消せる');
+
+insert into public.reactions (post_id, user_id, reaction_type)
+values (pg_temp.uuid_val('group_post'), :'bob', 'cheer');
+
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+delete from public.reactions where post_id = pg_temp.uuid_val('group_post');
+reset role;
+select pg_temp.check(
+  (select count(*) from public.reactions where post_id = pg_temp.uuid_val('group_post')) = 1,
+  '他人のリアクションは消せない');
+
 -- 投稿者はコメントを非表示にできる
 reset role;
 select set_config('request.jwt.claim.sub', :'alice', true);
@@ -314,6 +347,24 @@ begin
   end;
 end;
 $$;
+
+-- 投稿者は自分の投稿へのコメントを削除できる。無関係な人はできない。
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+delete from public.comments where id = pg_temp.uuid_val('comment');
+reset role;
+select pg_temp.check(
+  (select count(*) from public.comments where id = pg_temp.uuid_val('comment')) = 1,
+  '無関係なユーザーはコメントを削除できない');
+
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+delete from public.comments where id = pg_temp.uuid_val('comment');
+reset role;
+select pg_temp.check(
+  (select count(*) from public.comments where id = pg_temp.uuid_val('comment')) = 0,
+  '投稿者は自分の投稿へのコメントを削除できる');
 
 -- -----------------------------------------------------------------------------
 \echo ''

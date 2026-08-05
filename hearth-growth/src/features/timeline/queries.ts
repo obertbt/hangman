@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
-import type { ActiveGroupMember, Visibility } from '@/types/database.types';
+import type { ActiveGroupMember, ReactionType, Visibility } from '@/types/database.types';
 
 export const TIMELINE_PAGE_SIZE = 20;
 
@@ -21,6 +21,8 @@ export interface TimelineItem {
   createdAt: string;
   reactionCount: number;
   commentCount: number;
+  /** 自分が付けているリアクション。付けていなければ null。 */
+  myReaction: ReactionType | null;
   isMine: boolean;
 }
 
@@ -80,6 +82,22 @@ export async function getTimeline({
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
+  // 自分のリアクションは、表示する投稿ぶんをまとめて1回で引く（N+1 を避ける）
+  const myReactions = new Map<string, ReactionType>();
+  if (page.length > 0) {
+    const { data: reactions } = await supabase
+      .from('reactions')
+      .select('post_id, reaction_type')
+      .eq('user_id', user.id)
+      .in(
+        'post_id',
+        page.map((row) => row.id),
+      );
+    for (const reaction of reactions ?? []) {
+      myReactions.set(reaction.post_id, reaction.reaction_type);
+    }
+  }
+
   return {
     items: page.map((row) => ({
       id: row.id,
@@ -97,6 +115,7 @@ export async function getTimeline({
       createdAt: row.created_at,
       reactionCount: row.reactions?.[0]?.count ?? 0,
       commentCount: row.comments?.[0]?.count ?? 0,
+      myReaction: myReactions.get(row.id) ?? null,
       isMine: row.user_id === user.id,
     })),
     nextCursor: hasMore ? (page.at(-1)?.created_at ?? null) : null,
