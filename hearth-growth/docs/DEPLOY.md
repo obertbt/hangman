@@ -21,15 +21,52 @@
 
 ## 2. テーブルと権限を作る
 
+**6つのファイルを、番号順に1つずつ**貼り付けて実行します。
+
+長い SQL を一度に貼ると、端末側で途中までしかコピーされないことがあります
+（切れたまま実行すると `syntax error at end of input` で失敗します）。
+そうならない大きさに分けてあります。
+
 1. 左メニュー **SQL Editor** → **New query**
-2. 次のファイルを開き、中身をすべてコピーします
-
-   https://raw.githubusercontent.com/obertbt/hangman/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup.sql
-
+2. 下のリンクを開き、コピーボタン（📋）でファイルの中身をコピー
 3. SQL Editor に貼り付けて **Run**
-4. `Success. No rows returned` と出れば完了です
+4. `Success. No rows returned` が出たら、次の番号へ
 
-> 8つのマイグレーションを1つにまとめたファイルです。実行するのは最初の一度だけ。
+| #   | リンク                                                                                                                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | [01.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/01.sql) |
+| 2   | [02.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/02.sql) |
+| 3   | [03.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/03.sql) |
+| 4   | [04.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/04.sql) |
+| 5   | [05.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/05.sql) |
+| 6   | [06.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/06.sql) |
+
+**順番は必ず守ってください。** 後の番号は前の番号で作ったものを使います。
+
+### 確認
+
+6つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/check.sql) を実行します。
+こう出れば成功です。
+
+| テーブル数 | 関数の数 | RLSが有効なテーブル数 | ポリシー数 |
+| ---------- | -------- | --------------------- | ---------- |
+| 12         | 20以上   | 12                    | 40         |
+
+### やり直したいとき
+
+`already exists`（すでにある）と出た場合は、その番号がすでに実行済みです。
+最初からやり直すなら、次を実行してから 01 に戻ってください。
+**まだデータを入れていないうちだけ**にしてください。中身がすべて消えます。
+
+```sql
+drop schema public cascade;
+create schema public;
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+```
+
+> パソコンから Supabase CLI を使う場合は、分割版ではなく
+> `supabase/migrations/` をそのまま流してください（内容は同じです）。
 
 ## 3. 接続情報を控える
 
