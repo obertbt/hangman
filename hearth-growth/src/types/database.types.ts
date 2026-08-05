@@ -173,6 +173,7 @@ export type ActiveGroupMember = {
   category_color: string;
   status: Extract<SessionStatus, 'running' | 'paused'>;
   started_at: string;
+  paused_at: string | null;
   total_paused_seconds: number;
 };
 
