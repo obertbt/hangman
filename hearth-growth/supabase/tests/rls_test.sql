@@ -363,6 +363,157 @@ begin
 end;
 $$;
 
+-- -----------------------------------------------------------------------------
+-- タイマーの状態遷移（RPC）
+-- -----------------------------------------------------------------------------
+reset role;
+-- 直前のテストで残っているセッションを片付ける
+delete from public.activity_sessions where user_id = pg_temp.uuid_val('alice');
+
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+insert into v select 'session', (public.start_session(pg_temp.uuid_val('category'), '英単語')).id::text;
+
+select pg_temp.check(
+  (select status from public.activity_sessions where id = pg_temp.uuid_val('session')) = 'running',
+  'start_session で running のセッションが作られる');
+
+-- 二重起動は RPC が分かりやすい例外にする
+do $$
+begin
+  begin
+    perform public.start_session(pg_temp.uuid_val('category'), '二重起動');
+    raise exception 'FAILED: start_session が二重起動を許した';
+  exception
+    when raise_exception then
+      if sqlerrm like 'FAILED:%' then raise; end if;
+      raise notice '  ok   start_session は活動中のセッションがあると失敗する';
+  end;
+end;
+$$;
+
+-- 一時停止 → 再開で、停止していた時間が積み上がる
+select public.pause_session(pg_temp.uuid_val('session'));
+select pg_temp.check(
+  (select paused_at is not null from public.activity_sessions where id = pg_temp.uuid_val('session')),
+  'pause_session で paused_at が入る');
+
+-- 停止時間を1分だけ過去に見せかけて再開する
+reset role;
+update public.activity_sessions
+set paused_at = paused_at - interval '60 seconds'
+where id = pg_temp.uuid_val('session');
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+select public.resume_session(pg_temp.uuid_val('session'));
+select pg_temp.check(
+  (select total_paused_seconds between 59 and 61
+     from public.activity_sessions where id = pg_temp.uuid_val('session')),
+  'resume_session が停止していた時間を積み上げる');
+select pg_temp.check(
+  (select paused_at is null and status = 'running'
+     from public.activity_sessions where id = pg_temp.uuid_val('session')),
+  'resume_session で running に戻る');
+
+-- 開始を10分前にずらして終了し、停止時間が差し引かれることを見る
+reset role;
+update public.activity_sessions
+set started_at = now() - interval '10 minutes'
+where id = pg_temp.uuid_val('session');
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+select public.complete_session(pg_temp.uuid_val('session'));
+select pg_temp.check(
+  (select duration_seconds between 538 and 542
+     from public.activity_sessions where id = pg_temp.uuid_val('session')),
+  'duration = 終了 - 開始 - 累計停止時間（10分 - 1分 = 9分）');
+select pg_temp.check(
+  (select status = 'completed' and ended_at is not null
+     from public.activity_sessions where id = pg_temp.uuid_val('session')),
+  'complete_session で completed になる');
+
+-- 終了済みのセッションは操作できない
+do $$
+begin
+  begin
+    perform public.pause_session(pg_temp.uuid_val('session'));
+    raise exception 'FAILED: 終了済みのセッションを一時停止できてしまった';
+  exception
+    when no_data_found then
+      raise notice '  ok   終了済みのセッションは操作できない';
+  end;
+end;
+$$;
+
+-- 終了時刻の修正（13.4）。開始より前や未来は受け付けない。
+insert into v select 'session2', (public.start_session(pg_temp.uuid_val('category'), '長時間')).id::text;
+
+do $$
+begin
+  begin
+    perform public.complete_session(pg_temp.uuid_val('session2'), now() - interval '1 day');
+    raise exception 'FAILED: 開始より前の終了時刻を受け付けてしまった';
+  exception
+    when raise_exception then
+      if sqlerrm like 'FAILED:%' then raise; end if;
+      raise notice '  ok   開始より前の終了時刻は受け付けない';
+  end;
+
+  begin
+    perform public.complete_session(pg_temp.uuid_val('session2'), now() + interval '1 day');
+    raise exception 'FAILED: 未来の終了時刻を受け付けてしまった';
+  exception
+    when raise_exception then
+      if sqlerrm like 'FAILED:%' then raise; end if;
+      raise notice '  ok   未来の終了時刻は受け付けない';
+  end;
+end;
+$$;
+
+-- 取り消しは記録を残さない
+select public.cancel_session(pg_temp.uuid_val('session2'));
+select pg_temp.check(
+  (select status from public.activity_sessions where id = pg_temp.uuid_val('session2')) = 'cancelled',
+  'cancel_session で cancelled になる');
+
+-- 取り消した後は、また新しく始められる
+insert into v select 'session3', (public.start_session(pg_temp.uuid_val('category'))).id::text;
+select pg_temp.check(
+  (select status from public.activity_sessions where id = pg_temp.uuid_val('session3')) = 'running',
+  '取り消した後は新しいタイマーを開始できる');
+
+-- 他人のセッションは操作できない
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.pause_session(pg_temp.uuid_val('session3'));
+    raise exception 'FAILED: 他人のタイマーを一時停止できてしまった';
+  exception
+    when no_data_found then
+      raise notice '  ok   他人のタイマーは操作できない';
+  end;
+end;
+$$;
+
+-- 使えないカテゴリーでは開始できない
+do $$
+begin
+  begin
+    perform public.start_session(pg_temp.uuid_val('category'));  -- alice の個人カテゴリー
+    raise exception 'FAILED: 他人のカテゴリーで開始できてしまった';
+  exception
+    when no_data_found then
+      raise notice '  ok   他人の個人カテゴリーでは開始できない';
+  end;
+end;
+$$;
+
 -- 他人のセッションは直接見えない
 reset role;
 select set_config('request.jwt.claim.sub', :'bob', true);

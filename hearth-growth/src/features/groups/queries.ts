@@ -45,7 +45,9 @@ export async function listMyGroups(): Promise<GroupSummary[]> {
     return [];
   }
 
-  const groupIds = (myMemberships ?? []).map((row) => row.group?.id).filter((id): id is string => Boolean(id));
+  const groupIds = (myMemberships ?? [])
+    .map((row) => row.group?.id)
+    .filter((id): id is string => Boolean(id));
   if (groupIds.length === 0) return [];
 
   // メンバー数はまとめて1回で取る（N+1 を避ける）

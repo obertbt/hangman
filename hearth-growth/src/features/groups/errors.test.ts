@@ -13,15 +13,13 @@ describe('toInvitationErrorMessage', () => {
   });
 
   it('Postgres が付ける接頭辞があっても判定できる', () => {
-    expect(
-      toInvitationErrorMessage({ message: 'PostgresError: invitation expired (code P0001)' }),
-    ).toContain('有効期限');
+    expect(toInvitationErrorMessage({ message: 'PostgresError: invitation expired (code P0001)' })).toContain(
+      '有効期限',
+    );
   });
 
   it('知らないエラーでは内部情報を出さない', () => {
-    expect(toInvitationErrorMessage({ message: 'relation "x" does not exist' })).toBe(
-      GENERIC_ERROR_MESSAGE,
-    );
+    expect(toInvitationErrorMessage({ message: 'relation "x" does not exist' })).toBe(GENERIC_ERROR_MESSAGE);
     expect(toInvitationErrorMessage(null)).toBe(GENERIC_ERROR_MESSAGE);
   });
 });

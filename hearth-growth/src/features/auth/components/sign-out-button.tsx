@@ -9,11 +9,7 @@ export function SignOutButton() {
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Button
-      variant="outline"
-      disabled={isPending}
-      onClick={() => startTransition(() => signOutAction())}
-    >
+    <Button variant="outline" disabled={isPending} onClick={() => startTransition(() => signOutAction())}>
       {isPending ? 'ログアウトしています…' : 'ログアウト'}
     </Button>
   );

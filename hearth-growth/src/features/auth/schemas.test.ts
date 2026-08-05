@@ -51,8 +51,7 @@ describe('updatePasswordSchema', () => {
 
   it('一致すれば通る', () => {
     expect(
-      updatePasswordSchema.safeParse({ password: 'password123', passwordConfirm: 'password123' })
-        .success,
+      updatePasswordSchema.safeParse({ password: 'password123', passwordConfirm: 'password123' }).success,
     ).toBe(true);
   });
 });

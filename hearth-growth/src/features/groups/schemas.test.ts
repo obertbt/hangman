@@ -9,9 +9,7 @@ import {
 
 describe('createGroupSchema', () => {
   it('名前の前後の空白を落とす', () => {
-    expect(createGroupSchema.parse({ name: '  ふたりの記録  ', description: '' }).name).toBe(
-      'ふたりの記録',
-    );
+    expect(createGroupSchema.parse({ name: '  ふたりの記録  ', description: '' }).name).toBe('ふたりの記録');
   });
 
   it('空の名前を弾く', () => {
@@ -35,16 +33,12 @@ describe('createInvitationSchema', () => {
   });
 
   it('30日を超える期限を許さない', () => {
-    expect(createInvitationSchema.safeParse({ groupId, expiresInDays: 31, maxUses: 10 }).success).toBe(
-      false,
-    );
+    expect(createInvitationSchema.safeParse({ groupId, expiresInDays: 31, maxUses: 10 }).success).toBe(false);
   });
 
   it('無制限の利用回数を許さない', () => {
     expect(createInvitationSchema.safeParse({ groupId, expiresInDays: 7, maxUses: 0 }).success).toBe(false);
-    expect(createInvitationSchema.safeParse({ groupId, expiresInDays: 7, maxUses: 999 }).success).toBe(
-      false,
-    );
+    expect(createInvitationSchema.safeParse({ groupId, expiresInDays: 7, maxUses: 999 }).success).toBe(false);
   });
 
   it('グループIDが UUID でなければ弾く', () => {

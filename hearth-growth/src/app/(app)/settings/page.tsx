@@ -5,6 +5,8 @@ import { Card, CardTitle } from '@/components/ui/card';
 import { PhasePlaceholder } from '@/components/ui/phase-placeholder';
 import { SignOutButton } from '@/features/auth/components/sign-out-button';
 import { requireProfile } from '@/features/auth/queries';
+import { CategoryManager } from '@/features/categories/components/category-manager';
+import { listCategories } from '@/features/categories/queries';
 import { AvatarUploader } from '@/features/profile/components/avatar-uploader';
 import { ProfileForm } from '@/features/profile/components/profile-form';
 
@@ -12,6 +14,8 @@ export const metadata: Metadata = { title: '設定' };
 
 export default async function SettingsPage() {
   const profile = await requireProfile();
+  // 使わない設定にしたカテゴリーもここでは出す
+  const categories = await listCategories({ activeOnly: false });
 
   return (
     <>
@@ -32,11 +36,12 @@ export default async function SettingsPage() {
           </div>
         </Card>
 
-        <PhasePlaceholder
-          phase={4}
-          title="カテゴリー"
-          items={['カテゴリーの追加と編集', '並び替え', '使わないカテゴリーを隠す']}
-        />
+        <Card>
+          <CardTitle>カテゴリー</CardTitle>
+          <div className="mt-3">
+            <CategoryManager categories={categories} />
+          </div>
+        </Card>
 
         <PhasePlaceholder phase={8} title="そのほか" items={['通知設定', 'アカウント削除']} />
 

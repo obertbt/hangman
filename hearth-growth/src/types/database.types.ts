@@ -318,6 +318,26 @@ export type Database = {
         Args: { p_comment_id: string; p_hidden: boolean };
         Returns: void;
       };
+      start_session: {
+        Args: { p_category_id: string; p_title?: string | null; p_note?: string | null };
+        Returns: ActivitySessionRow;
+      };
+      pause_session: {
+        Args: { p_session_id: string };
+        Returns: ActivitySessionRow;
+      };
+      resume_session: {
+        Args: { p_session_id: string };
+        Returns: ActivitySessionRow;
+      };
+      complete_session: {
+        Args: { p_session_id: string; p_ended_at?: string | null };
+        Returns: ActivitySessionRow;
+      };
+      cancel_session: {
+        Args: { p_session_id: string };
+        Returns: void;
+      };
     };
     Enums: {
       [_ in never]: never;

@@ -3,11 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { GENERIC_ERROR_MESSAGE } from '@/features/auth/errors';
-import {
-  updateAvatarSchema,
-  updateProfileSchema,
-  type UpdateProfileInput,
-} from '@/features/profile/schemas';
+import { updateAvatarSchema, updateProfileSchema, type UpdateProfileInput } from '@/features/profile/schemas';
 import { fail, ok, type ActionResult } from '@/lib/actions/result';
 import { createClient } from '@/lib/supabase/server';
 

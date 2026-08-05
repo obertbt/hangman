@@ -44,7 +44,13 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
 }
 
 /** フォーム全体に関わるエラー（認証失敗など）。 */
-export function FormMessage({ tone = 'error', children }: { tone?: 'error' | 'success'; children: ReactNode }) {
+export function FormMessage({
+  tone = 'error',
+  children,
+}: {
+  tone?: 'error' | 'success';
+  children: ReactNode;
+}) {
   return (
     <p
       role={tone === 'error' ? 'alert' : 'status'}

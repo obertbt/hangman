@@ -120,8 +120,8 @@ export function InvitationPanel({ groupId, invitations, siteUrl }: InvitationPan
                   className="w-full rounded-lg bg-[--color-background] px-2 py-1.5 text-xs"
                 />
                 <p className="mt-2 text-xs text-[--color-muted]">
-                  {formatExpiry(invitation.expires_at)}まで / {invitation.used_count} of{' '}
-                  {invitation.max_uses} 回使用
+                  {formatExpiry(invitation.expires_at)}まで / {invitation.used_count} of {invitation.max_uses}{' '}
+                  回使用
                   {isExpired ? '（期限切れ）' : null}
                   {!isExpired && isExhausted ? '（上限に達しています）' : null}
                 </p>

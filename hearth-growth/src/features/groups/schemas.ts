@@ -8,10 +8,7 @@ export const groupNameSchema = z
   .min(1, 'グループ名を入力してください')
   .max(50, 'グループ名は50文字以内にしてください');
 
-export const groupDescriptionSchema = z
-  .string()
-  .trim()
-  .max(500, '説明は500文字以内にしてください');
+export const groupDescriptionSchema = z.string().trim().max(500, '説明は500文字以内にしてください');
 
 export const createGroupSchema = z.object({
   name: groupNameSchema,

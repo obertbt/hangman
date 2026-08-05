@@ -122,10 +122,7 @@ export async function createInvitationAction(
 }
 
 /** 招待リンクを無効化する。行は消さず revoked_at を立てる。 */
-export async function revokeInvitationAction(
-  groupId: string,
-  invitationId: string,
-): Promise<ActionResult> {
+export async function revokeInvitationAction(groupId: string, invitationId: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   if (!user) return fail('ログインの有効期限が切れました。もう一度ログインしてください。');
 

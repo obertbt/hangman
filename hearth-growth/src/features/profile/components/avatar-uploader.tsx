@@ -80,7 +80,12 @@ export function AvatarUploader({ profile }: { profile: ProfileRow }) {
       <div className="flex items-center gap-4">
         <Avatar src={preview} name={profile.display_name} size={64} />
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" disabled={isPending} onClick={() => inputRef.current?.click()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={isPending}
+            onClick={() => inputRef.current?.click()}
+          >
             {isPending ? '処理しています…' : '画像を選ぶ'}
           </Button>
           {preview ? (

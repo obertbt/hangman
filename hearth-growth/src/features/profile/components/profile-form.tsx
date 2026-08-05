@@ -45,9 +45,7 @@ export function ProfileForm({ profile }: { profile: ProfileRow }) {
   });
 
   // 一覧に無いタイムゾーンを使っている場合も選択肢に残す
-  const timezoneOptions = TIMEZONES.includes(profile.timezone)
-    ? TIMEZONES
-    : [profile.timezone, ...TIMEZONES];
+  const timezoneOptions = TIMEZONES.includes(profile.timezone) ? TIMEZONES : [profile.timezone, ...TIMEZONES];
 
   const onSubmit = handleSubmit((values) => {
     setFormError(null);

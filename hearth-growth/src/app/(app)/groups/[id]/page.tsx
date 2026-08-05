@@ -33,12 +33,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
         <Card>
           <CardTitle>メンバー（{members.length}人）</CardTitle>
           <div className="mt-3">
-            <MemberList
-              groupId={group.id}
-              members={members}
-              myUserId={profile.id}
-              canManage={canManage}
-            />
+            <MemberList groupId={group.id} members={members} myUserId={profile.id} canManage={canManage} />
           </div>
         </Card>
 
