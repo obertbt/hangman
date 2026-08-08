@@ -31,6 +31,10 @@ const MESSAGES: Record<string, string> = {
  */
 const MESSAGE_PATTERNS: [RegExp, string][] = [
   [
+    /fetch failed|network|ENOTFOUND|ECONNREFUSED|timed? ?out/i,
+    'サーバーに接続できませんでした。接続設定を確認してください（/setup-check で調べられます）。',
+  ],
+  [
     /sending (confirmation|magic link|recovery) (e?mail)/i,
     '確認メールを送れませんでした。メールの設定を確認するか、しばらく待ってからお試しください。',
   ],

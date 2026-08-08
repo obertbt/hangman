@@ -37,3 +37,10 @@ describe('コードが付かない失敗', () => {
     );
   });
 });
+
+describe('接続そのものの失敗', () => {
+  it('通信できていないことを言い分ける', () => {
+    expect(toAuthErrorMessage({ message: 'fetch failed' })).toContain('接続');
+    expect(toAuthErrorMessage({ message: 'Network request failed' })).toContain('接続');
+  });
+});
