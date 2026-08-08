@@ -63,6 +63,8 @@ export async function signUpAction(input: SignUpInput, next?: string): Promise<A
   });
 
   if (error) {
+    // 画面には出さない詳細を、あとから追えるよう残す
+    console.error('signUpAction failed', { code: error.code, status: error.status, message: error.message });
     return fail(toAuthErrorMessage(error));
   }
 

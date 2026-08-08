@@ -17,3 +17,23 @@ describe('toAuthErrorMessage', () => {
     expect(toAuthErrorMessage({ status: 429 })).toContain('しばらく');
   });
 });
+
+describe('コードが付かない失敗', () => {
+  it('確認メールの送信失敗を見分ける', () => {
+    expect(
+      toAuthErrorMessage({ code: 'unexpected_failure', message: 'Error sending confirmation email' }),
+    ).toContain('確認メール');
+  });
+
+  it('登録時の内部エラーを見分ける', () => {
+    expect(
+      toAuthErrorMessage({ code: 'unexpected_failure', message: 'Database error saving new user' }),
+    ).toContain('登録処理');
+  });
+
+  it('見分けられない本文では一律の文言に戻る', () => {
+    expect(toAuthErrorMessage({ code: 'unexpected_failure', message: 'something else' })).toBe(
+      GENERIC_ERROR_MESSAGE,
+    );
+  });
+});
