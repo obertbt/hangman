@@ -27,3 +27,24 @@ describe('parsePublicEnv', () => {
     );
   });
 });
+
+describe('接続先 URL の整え方', () => {
+  const valid = {
+    NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
+  };
+
+  it('ダッシュボードの「API URL」を貼っても入り口だけを使う', () => {
+    expect(
+      parsePublicEnv({ ...valid, NEXT_PUBLIC_SUPABASE_URL: 'https://abc.supabase.co/rest/v1' })
+        .NEXT_PUBLIC_SUPABASE_URL,
+    ).toBe('https://abc.supabase.co');
+  });
+
+  it('末尾のスラッシュも落とす', () => {
+    expect(
+      parsePublicEnv({ ...valid, NEXT_PUBLIC_SUPABASE_URL: 'https://abc.supabase.co/' })
+        .NEXT_PUBLIC_SUPABASE_URL,
+    ).toBe('https://abc.supabase.co');
+  });
+});

@@ -15,6 +15,28 @@ export const dynamic = 'force-dynamic';
  * 出すのは、すでにブラウザへ配られている情報だけ。
  * 鍵は先頭数文字と長さしか表示しない。
  */
+/**
+ * 鍵に書かれている役割を読む。
+ *
+ * JWT の中身は誰でも読める（署名を検証しないので中身を信用はしない）。
+ * ここで見たいのは1点だけ ── service_role がブラウザ側に置かれていないか。
+ * 置かれていれば RLS を迂回できてしまうので、はっきり警告する。
+ */
+function readKeyRole(key: string): string | null {
+  if (key.startsWith('sb_publishable_')) return 'publishable';
+  if (key.startsWith('sb_secret_')) return 'service_role';
+
+  const payload = key.split('.')[1];
+  if (!payload) return null;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as { role?: string };
+    return decoded.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface CheckResult {
   ok: boolean;
   title: string;
@@ -111,13 +133,7 @@ export default async function SetupCheckPage() {
   const [auth, database] = await Promise.all([checkAuthEndpoint(), checkDatabase()]);
 
   const key = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const host = (() => {
-    try {
-      return new URL(env.NEXT_PUBLIC_SUPABASE_URL).host;
-    } catch {
-      return '（URL の形が不正です）';
-    }
-  })();
+  const keyRole = readKeyRole(key);
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-2xl space-y-4 px-4 py-8">
@@ -155,6 +171,16 @@ export default async function SetupCheckPage() {
             </p>
           </div>
         ) : null}
+        {keyRole === 'service_role' ? (
+          <div className="rounded-2xl border border-red-500 bg-red-50 p-4 text-red-800">
+            <p className="font-medium">🚨 危険な鍵が設定されています</p>
+            <p className="mt-2 text-sm">
+              service_role（Secret key）が使われています。この鍵は RLS を迂回できるため、
+              ブラウザへ渡してはいけません。すぐに anon / Publishable key へ差し替え、 Supabase
+              側で今の鍵を無効化してください。
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-[--color-border] bg-[--color-surface] p-4">
@@ -162,13 +188,13 @@ export default async function SetupCheckPage() {
         <dl className="mt-2 space-y-2 text-sm">
           <div>
             <dt className="text-xs text-[--color-muted]">接続先</dt>
-            <dd className="font-mono break-all">{host}</dd>
+            <dd className="font-mono break-all">{env.NEXT_PUBLIC_SUPABASE_URL}</dd>
           </div>
           <div>
             <dt className="text-xs text-[--color-muted]">鍵</dt>
             {/* 鍵そのものは出さない。取り違えが分かる程度に留める。 */}
             <dd className="font-mono break-all">
-              {key.slice(0, 8)}… （{key.length}文字）
+              {key.slice(0, 8)}… （{key.length}文字{keyRole ? ` / ${keyRole}` : ''}）
             </dd>
           </div>
           <div>

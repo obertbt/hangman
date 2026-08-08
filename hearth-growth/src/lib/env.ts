@@ -5,8 +5,20 @@ import { z } from 'zod';
  * 未設定のまま起動すると、実行時に分かりにくい失敗をするため、
  * 起動時点で「どの変数が足りないか」を明示して落とす。
  */
+/**
+ * Supabase の接続先。
+ *
+ * ダッシュボードには「API URL」として `https://xxxx.supabase.co/rest/v1` の形でも
+ * 表示される場所があり、そのまま貼られることがある。
+ * クライアントが必要とするのは入り口（オリジン）だけなので、道筋は落としてそろえる。
+ */
+const supabaseUrlSchema = z
+  .string()
+  .url('NEXT_PUBLIC_SUPABASE_URL は URL 形式で指定してください')
+  .transform((value) => new URL(value).origin);
+
 const publicEnvSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url('NEXT_PUBLIC_SUPABASE_URL は URL 形式で指定してください'),
+  NEXT_PUBLIC_SUPABASE_URL: supabaseUrlSchema,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, 'NEXT_PUBLIC_SUPABASE_ANON_KEY が未設定です'),
   NEXT_PUBLIC_SITE_URL: z.string().url().default('http://localhost:3000'),
 });
