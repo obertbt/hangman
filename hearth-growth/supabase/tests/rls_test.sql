@@ -240,6 +240,119 @@ update public.activity_posts set deleted_at = null where id = pg_temp.uuid_val('
 
 -- -----------------------------------------------------------------------------
 \echo ''
+\echo '== 記録に付けた写真'
+-- -----------------------------------------------------------------------------
+-- 写真の公開範囲は、記録本体とまったく同じでなければならない。
+-- ここが崩れると「自分だけ」のつもりの写真が他人に届いてしまう。
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+insert into public.activity_photos (post_id, user_id, storage_path, sort_order)
+values
+  (pg_temp.uuid_val('group_post'),    :'alice', :'alice' || '/g/1.jpg', 0),
+  (pg_temp.uuid_val('private_post'),  :'alice', :'alice' || '/p/1.jpg', 0),
+  (pg_temp.uuid_val('selected_post'), :'alice', :'alice' || '/s/1.jpg', 0);
+
+select pg_temp.check((select count(*) from public.activity_photos) = 3,
+  '投稿者は自分の写真をすべて見られる');
+
+-- 1件につき4枚まで。5枚目はデータベース側で止める。
+insert into public.activity_photos (post_id, user_id, storage_path, sort_order)
+values
+  (pg_temp.uuid_val('group_post'), :'alice', :'alice' || '/g/2.jpg', 1),
+  (pg_temp.uuid_val('group_post'), :'alice', :'alice' || '/g/3.jpg', 2),
+  (pg_temp.uuid_val('group_post'), :'alice', :'alice' || '/g/4.jpg', 3);
+
+do $$
+begin
+  begin
+    insert into public.activity_photos (post_id, user_id, storage_path, sort_order)
+    values (pg_temp.uuid_val('group_post'), auth.uid(), auth.uid()::text || '/g/5.jpg', 4);
+    raise exception 'FAILED: 5枚目を登録できてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   1件につき4枚までしか登録できない';
+  end;
+end;
+$$;
+
+-- 他人の記録に写真を紐付けることはできない
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+
+do $$
+begin
+  begin
+    insert into public.activity_photos (post_id, user_id, storage_path)
+    values (pg_temp.uuid_val('selected_post'), auth.uid(), auth.uid()::text || '/x/1.jpg');
+    raise exception 'FAILED: 他人の記録に写真を付けられてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   他人の記録には写真を付けられない';
+  end;
+end;
+$$;
+
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('group_post')) = 4,
+  'グループ公開の記録の写真はメンバーに見える');
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('private_post')) = 0,
+  '非公開の記録の写真は他人には見えない');
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('selected_post')) = 1,
+  'selected 公開の記録の写真は許可されたユーザーに見える');
+
+-- 他人の写真は消せない
+delete from public.activity_photos where post_id = pg_temp.uuid_val('group_post');
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('group_post')) = 4,
+  '他人の写真は削除できない');
+
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+select pg_temp.check((select count(*) from public.activity_photos) = 0,
+  'グループ外のユーザーには写真が1件も見えない');
+
+-- 記録を消せば写真も残らない
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+delete from public.activity_photos where post_id = pg_temp.uuid_val('selected_post');
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('selected_post')) = 0,
+  '自分の写真は削除できる');
+
+reset role;
+with created as (
+  insert into public.activity_posts
+    (user_id, category_id, title, duration_seconds, activity_date, visibility)
+  values (pg_temp.uuid_val('alice'), pg_temp.uuid_val('category'), '消す予定の記録',
+          600, current_date, 'private')
+  returning id
+)
+insert into v select 'photo_post', id::text from created;
+
+insert into public.activity_photos (post_id, user_id, storage_path)
+values (pg_temp.uuid_val('photo_post'), pg_temp.uuid_val('alice'),
+        pg_temp.val('alice') || '/d/1.jpg');
+
+delete from public.activity_posts where id = pg_temp.uuid_val('photo_post');
+select pg_temp.check(
+  (select count(*) from public.activity_photos
+    where post_id = pg_temp.uuid_val('photo_post')) = 0,
+  '記録を削除すると写真の行も残らない');
+
+-- -----------------------------------------------------------------------------
+\echo ''
 \echo '== コメントとリアクション'
 -- -----------------------------------------------------------------------------
 select set_config('request.jwt.claim.sub', :'bob', true);

@@ -1,8 +1,6 @@
--- Hearth Growth セットアップ 5 / 7
--- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
--- 元になっているのは supabase/migrations/ の各ファイルです。
-
-grant execute on function public.cancel_session(uuid)                to authenticated;
+-- Hearth Growth : 0006_post_rpc.sql だけを実行する（1 / 2）
+-- すでに動いている環境へ、この変更ぶんだけを足すためのファイルです。
+-- まっさらな状態から作る場合は supabase/setup/ の 01 から順に実行してください。
 
 create or replace function public.user_today(p_user_id uuid default auth.uid())
 returns date
@@ -286,3 +284,4 @@ revoke all on function public.create_activity_post(uuid, uuid, text, text, integ
   from public, anon;
 revoke all on function public.update_activity_post(uuid, text, text, integer, date, text, uuid, uuid[])
   from public, anon;
+revoke all on function public.delete_activity_post(uuid) from public, anon;

@@ -1,4 +1,5 @@
--- 仕上がりの確認用。テーブル 12 / 関数 20 以上 / RLS 有効 12 になっていれば成功です。
+-- 仕上がりの確認用。テーブル 13 / RLS が有効なテーブル 13 になっていれば成功です。
+-- 関数の数とポリシー数は環境によって前後します（20 以上あれば問題ありません）。
 select
   (select count(*) from pg_tables where schemaname = 'public')                    as テーブル数,
   (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace

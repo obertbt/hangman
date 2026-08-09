@@ -40,7 +40,13 @@ self.addEventListener('fetch', (event) => {
     fetch(request).catch(async () => {
       const cache = await caches.open(CACHE);
       const offline = await cache.match(OFFLINE_URL);
-      return offline ?? new Response('オフラインです', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      return (
+        offline ??
+        new Response('オフラインです', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        })
+      );
     }),
   );
 });

@@ -32,6 +32,7 @@ export default async function FinishSessionPage() {
       <Card>
         <FinishSessionForm
           sessionId={lastCompleted.session.id}
+          userId={profile.id}
           durationSeconds={lastCompleted.session.duration_seconds ?? 0}
           category={lastCompleted.category}
           defaultTitle={lastCompleted.session.title}

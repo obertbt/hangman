@@ -30,6 +30,7 @@ export default async function ActivitiesPage() {
         <Card>
           <ManualActivityForm
             categories={categories}
+            userId={profile.id}
             today={getToday(profile.timezone)}
             defaultVisibility={profile.default_visibility}
             groups={groups.map(({ group }) => ({ id: group.id, name: group.name }))}

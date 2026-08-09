@@ -142,6 +142,16 @@ export type CommentRow = {
   deleted_at: string | null;
 };
 
+export type ActivityPhotoRow = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  /** 非公開バケット内の位置。表示するときだけ期限付き URL を発行する。 */
+  storage_path: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type DailyGoalRow = {
   id: string;
   user_id: string;
@@ -272,6 +282,16 @@ export type Database = {
           'id' | 'is_hidden' | 'created_at' | 'updated_at'
         >,
         Partial<CommentRow>,
+        [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
+      >;
+      activity_photos: TableShape<
+        ActivityPhotoRow,
+        Insertable<
+          ActivityPhotoRow,
+          'post_id' | 'user_id' | 'storage_path',
+          'id' | 'sort_order' | 'created_at'
+        >,
+        Partial<ActivityPhotoRow>,
         [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
       >;
       daily_goals: TableShape<

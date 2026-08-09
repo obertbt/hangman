@@ -1,94 +1,6 @@
--- Hearth Growth セットアップ 4 / 7
--- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
--- 元になっているのは supabase/migrations/ の各ファイルです。
-
-create or replace function public.set_comment_hidden(p_comment_id uuid, p_hidden boolean)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_user_id uuid := auth.uid();
-  v_post_id uuid;
-begin
-  if v_user_id is null then
-    raise exception 'authentication required' using errcode = '42501';
-  end if;
-
-  select post_id into v_post_id from public.comments where id = p_comment_id;
-
-  if not found then
-    raise exception 'comment not found' using errcode = 'P0002';
-  end if;
-
-  if not public.is_post_owner(v_post_id, v_user_id) then
-    raise exception 'not allowed' using errcode = '42501';
-  end if;
-
-  update public.comments set is_hidden = p_hidden where id = p_comment_id;
-end;
-$$;
-
-revoke all on function public.create_group(text, text)              from public, anon;
-revoke all on function public.accept_invitation(text)               from public, anon;
-revoke all on function public.get_active_group_members()            from public, anon;
-revoke all on function public.set_comment_hidden(uuid, boolean)     from public, anon;
-revoke all on function public.get_invitation_preview(text)          from public;
-
-grant execute on function public.create_group(text, text)          to authenticated;
-grant execute on function public.accept_invitation(text)           to authenticated;
-grant execute on function public.get_active_group_members()        to authenticated;
-grant execute on function public.set_comment_hidden(uuid, boolean) to authenticated;
-grant execute on function public.get_invitation_preview(text)      to anon, authenticated;
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'avatars',
-  'avatars',
-  true,
-  2 * 1024 * 1024, -- 2MB
-  array['image/jpeg', 'image/png', 'image/webp']
-)
-on conflict (id) do update
-set
-  public             = excluded.public,
-  file_size_limit    = excluded.file_size_limit,
-  allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists "avatars_read_all"      on storage.objects;
-drop policy if exists "avatars_insert_own"    on storage.objects;
-drop policy if exists "avatars_update_own"    on storage.objects;
-drop policy if exists "avatars_delete_own"    on storage.objects;
-
-create policy "avatars_read_all" on storage.objects
-  for select
-  using (bucket_id = 'avatars');
-
-create policy "avatars_insert_own" on storage.objects
-  for insert to authenticated
-  with check (
-    bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
-
-create policy "avatars_update_own" on storage.objects
-  for update to authenticated
-  using (
-    bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  )
-  with check (
-    bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
-
-create policy "avatars_delete_own" on storage.objects
-  for delete to authenticated
-  using (
-    bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
+-- Hearth Growth : 0005_timer_rpc.sql だけを実行する
+-- すでに動いている環境へ、この変更ぶんだけを足すためのファイルです。
+-- まっさらな状態から作る場合は supabase/setup/ の 01 から順に実行してください。
 
 create or replace function public.start_session(
   p_category_id uuid,
@@ -295,3 +207,4 @@ grant execute on function public.start_session(uuid, text, text)     to authenti
 grant execute on function public.pause_session(uuid)                 to authenticated;
 grant execute on function public.resume_session(uuid)                to authenticated;
 grant execute on function public.complete_session(uuid, timestamptz) to authenticated;
+grant execute on function public.cancel_session(uuid)                to authenticated;

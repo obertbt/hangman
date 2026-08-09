@@ -30,8 +30,7 @@
   --color-ember-800: #8d4a22;
 
   --font-sans:
-    var(--font-noto-sans-jp), ui-sans-serif, system-ui, 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
-    sans-serif;
+    var(--font-noto-sans-jp), ui-sans-serif, system-ui, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
 }
 
 :root {

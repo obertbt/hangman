@@ -8,12 +8,15 @@ import { Field, FormMessage, Input, Textarea } from '@/components/ui/field';
 import { createManualAction } from '@/features/activities/actions';
 import { VisibilityPicker, type VisibilityState } from '@/features/activities/components/visibility-picker';
 import { toDurationSeconds } from '@/features/activities/schemas';
+import { PhotoPicker } from '@/features/photos/components/photo-picker';
+import { uploadPendingPhotos, type PendingPhoto } from '@/features/photos/upload';
 import { formatDuration } from '@/lib/date/duration';
 import { cn } from '@/lib/utils/cn';
 import type { CategoryRow, Visibility } from '@/types/database.types';
 
 interface ManualActivityFormProps {
   categories: CategoryRow[];
+  userId: string;
   today: string;
   defaultVisibility: Visibility;
   groups: { id: string; name: string }[];
@@ -26,6 +29,7 @@ const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
 /** 手動記録（6.2）。タイマーを使わなかった活動もここから残せる。 */
 export function ManualActivityForm({
   categories,
+  userId,
   today,
   defaultVisibility,
   groups,
@@ -39,6 +43,7 @@ export function ManualActivityForm({
   const [activityDate, setActivityDate] = useState(today);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -66,14 +71,24 @@ export function ManualActivityForm({
         groupId: target.groupId,
         allowedUserIds: target.allowedUserIds,
       });
-      if (result.ok) {
-        setTitle('');
-        setBody('');
-        setIsOpen(false);
-        router.refresh();
-      } else {
+      if (!result.ok) {
         setError(result.message);
+        return;
       }
+
+      // 写真は記録を作ってから送る。ここで失敗しても記録は残っている。
+      const uploaded = await uploadPendingPhotos(userId, result.data, photos);
+      if (!uploaded.ok) {
+        setError(uploaded.message);
+        router.refresh();
+        return;
+      }
+
+      setTitle('');
+      setBody('');
+      setPhotos([]);
+      setIsOpen(false);
+      router.refresh();
     });
   };
 
@@ -198,6 +213,8 @@ export function ManualActivityForm({
           onChange={(event) => setBody(event.target.value)}
         />
       </Field>
+
+      <PhotoPicker value={photos} onChange={setPhotos} disabled={isPending} />
 
       <VisibilityPicker value={target} onChange={setTarget} groups={groups} reachableUsers={reachableUsers} />
 

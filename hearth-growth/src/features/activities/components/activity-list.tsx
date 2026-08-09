@@ -58,6 +58,7 @@ export function ActivityList({ activities }: { activities: ActivityListItem[] })
                         {activity.category?.name}・{formatDuration(activity.durationSeconds)}・
                         {VISIBILITY_LABELS[activity.visibility]}
                         {activity.fromTimer ? '・タイマー' : ''}
+                        {activity.photoCount > 0 ? `・写真${activity.photoCount}枚` : ''}
                       </p>
                     </div>
                   </Link>

@@ -149,14 +149,17 @@ npm run db:reset        # migrations と seed.sql を流し直す
 ホストされた Supabase プロジェクトを使う場合は、
 `supabase/migrations/` の SQL を番号順に SQL Editor で実行してください。
 
-| ファイル                   | 内容                                               |
-| -------------------------- | -------------------------------------------------- |
-| `0001_initial_schema.sql`  | テーブル・制約・インデックス・トリガー             |
-| `0002_rls_policies.sql`    | RLS の有効化と全ポリシー                           |
-| `0003_rpc.sql`             | 招待の受理など、RLS では表現しない手続き           |
-| `0004_storage_avatars.sql` | プロフィール画像用バケットとそのポリシー           |
-| `0005_timer_rpc.sql`       | タイマーの状態遷移（開始・停止・再開・終了・取消） |
-| `0006_post_rpc.sql`        | 活動記録の作成・編集・論理削除と、公開範囲の検証   |
+| ファイル                            | 内容                                               |
+| ----------------------------------- | -------------------------------------------------- |
+| `0001_initial_schema.sql`           | テーブル・制約・インデックス・トリガー             |
+| `0002_rls_policies.sql`             | RLS の有効化と全ポリシー                           |
+| `0003_rpc.sql`                      | 招待の受理など、RLS では表現しない手続き           |
+| `0004_storage_avatars.sql`          | プロフィール画像用バケットとそのポリシー           |
+| `0005_timer_rpc.sql`                | タイマーの状態遷移（開始・停止・再開・終了・取消） |
+| `0006_post_rpc.sql`                 | 活動記録の作成・編集・論理削除と、公開範囲の検証   |
+| `0007_active_members_paused_at.sql` | 「今、頑張っている人」に一時停止時刻を追加         |
+| `0008_summary.sql`                  | 週次・カテゴリー別の集計と連続日数                 |
+| `0009_activity_photos.sql`          | 活動記録の写真（非公開バケットとそのポリシー）     |
 
 RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確認できます
 （[実行方法](supabase/tests/README.md)）。
@@ -165,7 +168,10 @@ RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確
 
 > スマートフォンだけで公開して確認する手順は [docs/DEPLOY.md](docs/DEPLOY.md) にあります。
 > Supabase の SQL Editor へ貼るだけで済む [`supabase/setup.sql`](supabase/setup.sql)（1ファイル版）と、
-> スマートフォンでも切れずに貼れる [`supabase/setup/`](supabase/setup/)（6分割版）を用意しています。
+> スマートフォンでも切れずに貼れる [`supabase/setup/`](supabase/setup/)（番号順の分割版）を用意しています。
+> すでに動いている環境に変更ぶんだけを足すときは、
+> [`supabase/setup/updates/`](supabase/setup/updates/) の該当ファイルだけを実行します。
+> どちらも生成物です。`supabase/migrations/` を直してから `npm run db:bundle` で作り直してください。
 
 ### 4. 起動
 
@@ -189,6 +195,7 @@ http://localhost:3000 を開きます。
 | `npm run format`     | Prettier                                               |
 | `npm run db:reset`   | ローカル DB をマイグレーションから作り直す             |
 | `npm run db:types`   | ローカル DB から型定義を再生成する                     |
+| `npm run db:bundle`  | `supabase/setup.sql` と `supabase/setup/` を作り直す   |
 
 ## ディレクトリ構成
 
@@ -209,6 +216,7 @@ hearth-growth/
 │  │  ├─ categories/      カテゴリー管理
 │  │  ├─ timer/           タイマー
 │  │  ├─ activities/      活動記録と公開範囲
+│  │  ├─ photos/          活動記録に添える写真（縮小・送信・期限付き URL）
 │  │  ├─ timeline/        タイムラインと活動中メンバー
 │  │  ├─ reactions/       リアクション
 │  │  ├─ comments/        コメント
@@ -225,7 +233,9 @@ hearth-growth/
 │  └─ proxy.ts            認証セッションの更新とリダイレクト
 └─ supabase/
    ├─ migrations/
+   ├─ setup/              SQL Editor に貼る用（生成物・updates/ は差分だけ）
    ├─ policies/           RLS の対応表
+   ├─ tests/              RLS の振る舞いテスト
    └─ seed.sql
 ```
 

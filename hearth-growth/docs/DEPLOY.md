@@ -21,7 +21,7 @@
 
 ## 2. テーブルと権限を作る
 
-**6つのファイルを、番号順に1つずつ**貼り付けて実行します。
+**7つのファイルを、番号順に1つずつ**貼り付けて実行します。
 
 長い SQL を一度に貼ると、端末側で途中までしかコピーされないことがあります
 （切れたまま実行すると `syntax error at end of input` で失敗します）。
@@ -40,17 +40,21 @@
 | 4   | [04.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/04.sql) |
 | 5   | [05.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/05.sql) |
 | 6   | [06.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/06.sql) |
+| 7   | [07.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/07.sql) |
 
 **順番は必ず守ってください。** 後の番号は前の番号で作ったものを使います。
 
 ### 確認
 
-6つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/check.sql) を実行します。
+7つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/check.sql) を実行します。
 こう出れば成功です。
 
 | テーブル数 | 関数の数 | RLSが有効なテーブル数 | ポリシー数 |
 | ---------- | -------- | --------------------- | ---------- |
-| 12         | 20以上   | 12                    | 40         |
+| 13         | 20以上   | 13                    | 43         |
+
+関数の数とポリシー数は環境によって少し前後します。
+**テーブル数と RLS が有効なテーブル数が同じ 13** になっていれば大丈夫です。
 
 ### やり直したいとき
 
@@ -67,6 +71,18 @@ grant all on all tables in schema public to anon, authenticated, service_role;
 
 > パソコンから Supabase CLI を使う場合は、分割版ではなく
 > `supabase/migrations/` をそのまま流してください（内容は同じです）。
+
+### すでに動いているものに、あとから機能を足すとき
+
+01〜07 は「まっさらな状態から作る」ためのものです。
+機能が増えると区切り位置が変わるので、**もう一度 01 から流す必要はありません**。
+増えたぶんだけを [updates/](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/updates/) から実行してください。
+
+| 追加された機能     | 実行するファイル                                                                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/updates/0009_activity_photos.sql) |
+
+実行したあと、上の check.sql でテーブル数が 13 になっていれば成功です。
 
 ## 3. 接続情報を控える
 
@@ -141,6 +157,9 @@ Chrome のメニュー（右上の点3つ）→ **ホーム画面に追加**
 8. もう片方のアカウントで **タイムライン** に出るか、**応援**とコメントができるか
 9. **公開範囲を「自分だけ」にした記録が、相手から見えないこと**
 10. **ホーム** → 今日の活動時間・連続記録・今週のまとめが合っているか
+11. **記録に写真を添える** → 終了画面か「手動で記録する」で「写真を選ぶ」（4枚まで）
+12. もう片方のアカウントの **タイムライン** に、その写真が出るか
+13. **「自分だけ」にした記録の写真が、相手からは出ないこと**
 
 ### 特に見てほしいところ
 

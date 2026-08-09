@@ -13,6 +13,7 @@ export interface ActivityListItem {
   groupId: string | null;
   fromTimer: boolean;
   category: Pick<CategoryRow, 'id' | 'name' | 'icon' | 'color'> | null;
+  photoCount: number;
 }
 
 export interface ActivityDetail extends ActivityListItem {
@@ -36,7 +37,7 @@ export async function listMyActivities({ limit = 30 }: { limit?: number } = {}):
 
   const { data, error } = await supabase
     .from('activity_posts')
-    .select('*, category:categories(id, name, icon, color)')
+    .select('*, category:categories(id, name, icon, color), activity_photos(count)')
     .eq('user_id', user.id)
     .is('deleted_at', null)
     .order('activity_date', { ascending: false })
@@ -109,6 +110,7 @@ export async function listReachableUsers(): Promise<
 
 type PostWithCategory = ActivityPostRow & {
   category: Pick<CategoryRow, 'id' | 'name' | 'icon' | 'color'> | null;
+  activity_photos?: { count: number }[];
 };
 
 function toListItem(row: PostWithCategory): ActivityListItem {
@@ -122,5 +124,6 @@ function toListItem(row: PostWithCategory): ActivityListItem {
     groupId: row.group_id,
     fromTimer: row.session_id !== null,
     category: row.category,
+    photoCount: row.activity_photos?.[0]?.count ?? 0,
   };
 }

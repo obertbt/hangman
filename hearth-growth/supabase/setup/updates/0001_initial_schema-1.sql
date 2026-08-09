@@ -1,6 +1,6 @@
--- Hearth Growth セットアップ 1 / 7
--- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
--- 元になっているのは supabase/migrations/ の各ファイルです。
+-- Hearth Growth : 0001_initial_schema.sql だけを実行する（1 / 2）
+-- すでに動いている環境へ、この変更ぶんだけを足すためのファイルです。
+-- まっさらな状態から作る場合は supabase/setup/ の 01 から順に実行してください。
 
 create extension if not exists "pgcrypto";
 

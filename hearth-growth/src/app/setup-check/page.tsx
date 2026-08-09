@@ -107,7 +107,7 @@ async function checkDatabase(): Promise<CheckResult> {
         ok: false,
         title: 'テーブルが見つかりません',
         detail: `HTTP ${response.status}`,
-        hint: 'supabase/setup/ の SQL（01〜06）をすべて実行したか確認してください。',
+        hint: 'supabase/setup/ の SQL（01〜07）をすべて実行したか確認してください。',
       };
     }
 

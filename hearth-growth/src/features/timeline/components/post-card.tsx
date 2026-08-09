@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Avatar } from '@/components/ui/avatar';
 import { CommentThread } from '@/features/comments/components/comment-thread';
+import { PhotoGrid } from '@/features/photos/components/photo-grid';
 import { ReactionBar } from '@/features/reactions/components/reaction-bar';
 import type { TimelineItem } from '@/features/timeline/queries';
 import { formatDuration } from '@/lib/date/duration';
@@ -50,6 +51,8 @@ export function PostCard({ item, timeZone }: { item: TimelineItem; timeZone: str
 
       {item.title ? <p className="mt-2 text-sm font-medium">{item.title}</p> : null}
       {item.body ? <p className="mt-1 text-sm whitespace-pre-wrap">{item.body}</p> : null}
+
+      <PhotoGrid photos={item.photos} />
 
       <footer className="mt-3 space-y-3 border-t border-[--color-border] pt-3">
         {/* 自分の投稿には応援を送らない */}

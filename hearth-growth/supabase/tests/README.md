@@ -14,6 +14,8 @@
 - タイマーが二重に起動できない（`running` / `paused` は1件まで）
 - 招待リンクの期限・失効・利用上限が効く
 - 一般メンバーが管理者操作をできない／作成者を削除できない
+- 記録に添えた写真が、記録本体と同じ範囲にしか見えない
+- 写真は1件につき4枚まで／他人の記録には付けられない／他人の写真は消せない
 
 すべての変更は最後に `rollback` するため、データは残りません。
 
@@ -38,6 +40,11 @@ psql hearth_test -f supabase/migrations/0001_initial_schema.sql
 psql hearth_test -f supabase/migrations/0002_rls_policies.sql
 psql hearth_test -f supabase/migrations/0003_rpc.sql
 psql hearth_test -f supabase/migrations/0004_storage_avatars.sql
+psql hearth_test -f supabase/migrations/0005_timer_rpc.sql
+psql hearth_test -f supabase/migrations/0006_post_rpc.sql
+psql hearth_test -f supabase/migrations/0007_active_members_paused_at.sql
+psql hearth_test -f supabase/migrations/0008_summary.sql
+psql hearth_test -f supabase/migrations/0009_activity_photos.sql
 psql hearth_test -c "grant all on all tables in schema public to anon, authenticated;
                      grant all on all sequences in schema public to anon, authenticated;"
 psql hearth_test -f supabase/tests/rls_test.sql

@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { getPhotosForPosts } from '@/features/photos/queries';
+import type { PhotoView } from '@/features/photos/schemas';
 import { createClient } from '@/lib/supabase/server';
 import type { ActiveGroupMember, ReactionType, Visibility } from '@/types/database.types';
 
@@ -24,6 +26,7 @@ export interface TimelineItem {
   /** 自分が付けているリアクション。付けていなければ null。 */
   myReaction: ReactionType | null;
   isMine: boolean;
+  photos: PhotoView[];
 }
 
 export interface TimelinePage {
@@ -82,20 +85,24 @@ export async function getTimeline({
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
-  // 自分のリアクションは、表示する投稿ぶんをまとめて1回で引く（N+1 を避ける）
+  // 自分のリアクションと写真は、表示する投稿ぶんをまとめて引く（N+1 を避ける）
+  const postIds = page.map((row) => row.id);
   const myReactions = new Map<string, ReactionType>();
-  if (page.length > 0) {
-    const { data: reactions } = await supabase
-      .from('reactions')
-      .select('post_id, reaction_type')
-      .eq('user_id', user.id)
-      .in(
-        'post_id',
-        page.map((row) => row.id),
-      );
-    for (const reaction of reactions ?? []) {
+  let photosByPost = new Map<string, PhotoView[]>();
+
+  if (postIds.length > 0) {
+    const [reactionResult, photos] = await Promise.all([
+      supabase
+        .from('reactions')
+        .select('post_id, reaction_type')
+        .eq('user_id', user.id)
+        .in('post_id', postIds),
+      getPhotosForPosts(postIds),
+    ]);
+    for (const reaction of reactionResult.data ?? []) {
       myReactions.set(reaction.post_id, reaction.reaction_type);
     }
+    photosByPost = photos;
   }
 
   return {
@@ -117,6 +124,7 @@ export async function getTimeline({
       commentCount: row.comments?.[0]?.count ?? 0,
       myReaction: myReactions.get(row.id) ?? null,
       isMine: row.user_id === user.id,
+      photos: photosByPost.get(row.id) ?? [],
     })),
     nextCursor: hasMore ? (page.at(-1)?.created_at ?? null) : null,
   };

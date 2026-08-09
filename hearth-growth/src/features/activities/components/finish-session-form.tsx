@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Field, FormMessage, Input, Textarea } from '@/components/ui/field';
 import { createFromSessionAction } from '@/features/activities/actions';
 import { VisibilityPicker, type VisibilityState } from '@/features/activities/components/visibility-picker';
+import { PhotoPicker } from '@/features/photos/components/photo-picker';
+import { uploadPendingPhotos, type PendingPhoto } from '@/features/photos/upload';
 import { formatDuration } from '@/lib/date/duration';
 import type { CategoryRow, Visibility } from '@/types/database.types';
 
 interface FinishSessionFormProps {
   sessionId: string;
+  userId: string;
   durationSeconds: number;
   category: Pick<CategoryRow, 'name' | 'icon' | 'color'> | null;
   defaultTitle: string | null;
@@ -28,6 +31,7 @@ interface FinishSessionFormProps {
  */
 export function FinishSessionForm({
   sessionId,
+  userId,
   durationSeconds,
   category,
   defaultTitle,
@@ -38,6 +42,7 @@ export function FinishSessionForm({
   const router = useRouter();
   const [title, setTitle] = useState(defaultTitle ?? '');
   const [body, setBody] = useState('');
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -62,11 +67,19 @@ export function FinishSessionForm({
         groupId: visibility.groupId,
         allowedUserIds: visibility.allowedUserIds,
       });
-      if (result.ok) {
-        router.push('/activities');
-      } else {
+      if (!result.ok) {
         setError(result.message);
+        return;
       }
+
+      // 写真は記録を作ってから送る。ここで失敗しても記録は残っている。
+      const uploaded = await uploadPendingPhotos(userId, result.data, photos);
+      if (!uploaded.ok) {
+        setError(uploaded.message);
+        return;
+      }
+
+      router.push('/activities');
     });
   };
 
@@ -101,6 +114,8 @@ export function FinishSessionForm({
           onChange={(event) => setBody(event.target.value)}
         />
       </Field>
+
+      <PhotoPicker value={photos} onChange={setPhotos} disabled={isPending} />
 
       <VisibilityPicker value={target} onChange={setTarget} groups={groups} reachableUsers={reachableUsers} />
 
