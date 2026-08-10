@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { MOBILE_EXTRA_LINKS } from '@/components/layout/nav-links';
 import { PageHeader } from '@/components/layout/page-header';
 import { Avatar } from '@/components/ui/avatar';
 import { Card, CardTitle } from '@/components/ui/card';
@@ -87,6 +88,33 @@ export default async function ProfilePage() {
               message={goals.weekly?.message ?? null}
             />
           </div>
+        </Card>
+
+        {/*
+         * 下部ナビに載らない行き先。
+         * 横のナビは幅が広いときしか出ないため、ここが無いと
+         * スマートフォンの縦画面からグループへ辿り着けない。
+         */}
+        <Card>
+          <CardTitle>そのほか</CardTitle>
+          <ul className="mt-2 divide-y divide-[--color-border]">
+            {MOBILE_EXTRA_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="hover:bg-hearth-100/40 -mx-2 flex min-h-12 items-center justify-between gap-3 rounded-xl px-2 transition-colors"
+                >
+                  <span>
+                    <span className="block text-sm font-medium">{link.label}</span>
+                    <span className="block text-xs text-[--color-muted]">{link.description}</span>
+                  </span>
+                  <span aria-hidden className="text-[--color-muted]">
+                    ›
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </Card>
 
         <Card>

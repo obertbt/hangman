@@ -8,7 +8,7 @@
  *
  * 迷ったらキャッシュしない。ライフログで古い数字が出る方が困る。
  */
-const CACHE = 'hearth-growth-shell-v1';
+const CACHE = 'hearth-growth-shell-v2';
 const OFFLINE_URL = '/offline';
 const PRECACHE = [OFFLINE_URL, '/icons/icon.svg', '/manifest.webmanifest'];
 

@@ -15,6 +15,18 @@ test.describe('PWA', () => {
     expect(manifest.icons.some((icon: { purpose?: string }) => icon.purpose === 'maskable')).toBe(true);
   });
 
+  /*
+   * 画面の向きを縦に固定しない。
+   *
+   * orientation: 'portrait' を書いていたため、ホーム画面から起動した
+   * タブレットを横にしても縦のまま中央に置かれ、左右に壁紙が見えていた。
+   * 端末の向きは利用者が決めることで、アプリが決めることではない。
+   */
+  test('画面の向きを固定していない', async ({ request }) => {
+    const manifest = await (await request.get('/manifest.webmanifest')).json();
+    expect(manifest.orientation ?? 'any').toBe('any');
+  });
+
   test('アイコンが配信されている', async ({ request }) => {
     for (const icon of ['/icons/icon.svg', '/icons/icon-maskable.svg']) {
       const response = await request.get(icon);
