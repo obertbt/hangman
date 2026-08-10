@@ -64,11 +64,32 @@ describe('RLS の網羅', () => {
   });
 });
 
-describe('SECURITY DEFINER 関数の扱い', () => {
-  const definerFunctionCount = (sql: string) => [...sql.matchAll(/security definer/g)].length;
+/**
+ * 関数の宣言部（`create function 名 ... as $$` の手前まで）を切り出す。
+ *
+ * 数を突き合わせるだけだと「security definer が3つ、search_path が3つ」で
+ * 通ってしまい、片方が別の関数に付いていても気づけない。
+ * 1つずつ、その関数自身に付いているかを見る。
+ */
+function functionHeaders(sql: string): { name: string; header: string }[] {
+  return [...sql.matchAll(/create (?:or replace )?function public\.(\w+)([\s\S]*?)\bas \$\$/g)].map(
+    (match) => ({ name: match[1], header: match[2] }),
+  );
+}
 
-  it('SECURITY DEFINER 関数は search_path を固定している', () => {
-    expect([...allSql.matchAll(/set search_path = public/g)].length).toBe(definerFunctionCount(allSql));
+describe('SECURITY DEFINER 関数の扱い', () => {
+  it('SECURITY DEFINER 関数は自分自身で search_path を固定している', () => {
+    const unsafe = functionHeaders(allSql)
+      .filter(({ header }) => /security definer/.test(header))
+      .filter(({ header }) => !/set search_path = public/.test(header))
+      .map(({ name }) => name);
+    expect(unsafe).toEqual([]);
+  });
+
+  it('検査対象の SECURITY DEFINER 関数を実際に拾えている', () => {
+    // 正規表現が壊れて「0件だから全部安全」になっていないことの確認
+    const definers = functionHeaders(allSql).filter(({ header }) => /security definer/.test(header));
+    expect(definers.length).toBeGreaterThan(10);
   });
 
   it('公開する RPC は anon から実行権限を剥奪している（招待プレビューを除く）', () => {

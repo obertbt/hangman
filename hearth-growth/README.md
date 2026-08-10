@@ -160,6 +160,7 @@ npm run db:reset        # migrations と seed.sql を流し直す
 | `0007_active_members_paused_at.sql` | 「今、頑張っている人」に一時停止時刻を追加         |
 | `0008_summary.sql`                  | 週次・カテゴリー別の集計と連続日数                 |
 | `0009_activity_photos.sql`          | 活動記録の写真（非公開バケットとそのポリシー）     |
+| `0010_notifications.sql`            | アプリ内のお知らせ（行はトリガーが作る）           |
 
 RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確認できます
 （[実行方法](supabase/tests/README.md)）。
@@ -220,6 +221,7 @@ hearth-growth/
 │  │  ├─ timeline/        タイムラインと活動中メンバー
 │  │  ├─ reactions/       リアクション
 │  │  ├─ comments/        コメント
+│  │  ├─ notifications/   アプリ内のお知らせ
 │  │  ├─ analytics/       集計
 │  │  └─ goals/           目標
 │  ├─ lib/

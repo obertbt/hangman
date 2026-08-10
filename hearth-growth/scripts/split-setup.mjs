@@ -86,6 +86,13 @@ function splitIntoParts(source) {
 
 const parts = splitIntoParts(stripComments(lines));
 
+/**
+ * 確認用に出す期待値。
+ * ここを手で書くと、テーブルを足すたびに直し忘れて
+ * 「数が合わない」と利用者を悩ませることになる。
+ */
+const tableCount = [...readFileSync(SOURCE, 'utf8').matchAll(/create table public\.\w+/g)].length;
+
 rmSync(OUT_DIR, { recursive: true, force: true });
 mkdirSync(OUT_DIR, { recursive: true });
 
@@ -102,7 +109,7 @@ parts.forEach((part, index) => {
 // 最後に、うまくいったかを確かめるための問い合わせを置いておく
 writeFileSync(
   join(OUT_DIR, 'check.sql'),
-  `-- 仕上がりの確認用。テーブル 13 / RLS が有効なテーブル 13 になっていれば成功です。
+  `-- 仕上がりの確認用。テーブル ${tableCount} / RLS が有効なテーブル ${tableCount} になっていれば成功です。
 -- 関数の数とポリシー数は環境によって前後します（20 以上あれば問題ありません）。
 select
   (select count(*) from pg_tables where schemaname = 'public')                    as テーブル数,

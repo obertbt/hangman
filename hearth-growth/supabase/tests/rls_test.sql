@@ -481,6 +481,158 @@ select pg_temp.check(
 
 -- -----------------------------------------------------------------------------
 \echo ''
+\echo '== お知らせ'
+-- -----------------------------------------------------------------------------
+-- お知らせはアプリのコードではなくトリガーが作る。
+-- ここで確かめたいのは「誰に届くか」と「まとめ方」。
+reset role;
+with created as (
+  insert into public.activity_posts
+    (user_id, category_id, title, duration_seconds, activity_date, visibility, group_id)
+  values (pg_temp.uuid_val('alice'), pg_temp.uuid_val('category'), 'お知らせの確認', 600,
+          current_date, 'group', pg_temp.uuid_val('group'))
+  returning id
+)
+insert into v select 'notify_post', id::text from created;
+
+create or replace function pg_temp.notif_count(p_user uuid, p_type text) returns integer
+language sql stable as $$
+  select count(*)::integer from public.notifications
+  where user_id = p_user and type = p_type and post_id is not distinct from
+    (case when p_type = 'group_join' then null else pg_temp.uuid_val('notify_post') end)
+$$;
+
+-- bob が応援する
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+insert into public.reactions (post_id, user_id, reaction_type)
+values (pg_temp.uuid_val('notify_post'), :'bob', 'cheer');
+
+reset role;
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'reaction') = 1,
+  '応援がつくと投稿者にお知らせが届く');
+select pg_temp.check(
+  (select actor_count from public.notifications
+    where user_id = pg_temp.uuid_val('alice') and type = 'reaction'
+      and post_id = pg_temp.uuid_val('notify_post')) = 1,
+  'まとめた人数は1人から始まる');
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('bob'), 'reaction') = 0,
+  '応援した本人にはお知らせが届かない');
+
+-- carol を迎え入れる（このとき既にいる人へお知らせが届く）
+insert into public.group_members (group_id, user_id)
+values (pg_temp.uuid_val('group'), :'carol');
+
+select pg_temp.check(
+  (select count(*) from public.notifications
+    where type = 'group_join' and actor_id = pg_temp.uuid_val('carol')) = 2,
+  '新しい人が入ると、既にいる2人にお知らせが届く');
+select pg_temp.check(
+  (select count(*) from public.notifications
+    where type = 'group_join' and user_id = pg_temp.uuid_val('carol')) = 0,
+  '入ってきた本人にはお知らせが届かない');
+
+-- 2人目の応援は行を増やさず、人数だけを足す
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+insert into public.reactions (post_id, user_id, reaction_type)
+values (pg_temp.uuid_val('notify_post'), :'carol', 'together');
+
+reset role;
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'reaction') = 1,
+  '2人目の応援でもお知らせは1件のまま');
+select pg_temp.check(
+  (select actor_count from public.notifications
+    where user_id = pg_temp.uuid_val('alice') and type = 'reaction'
+      and post_id = pg_temp.uuid_val('notify_post')) = 2,
+  'まとめた人数が2人になる');
+
+-- コメントは1件ずつ知らせる
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+insert into public.comments (post_id, user_id, body)
+values (pg_temp.uuid_val('notify_post'), :'bob', 'いいですね');
+insert into public.comments (post_id, user_id, body)
+values (pg_temp.uuid_val('notify_post'), :'bob', 'つづきも読みたいです');
+
+reset role;
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'comment') = 2,
+  'コメントはまとめずに1件ずつ知らせる');
+
+-- 他人のお知らせは見えない
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+select pg_temp.check(
+  (select count(*) from public.notifications where user_id = pg_temp.uuid_val('alice')) = 0,
+  '他人あてのお知らせは見えない');
+
+do $$
+begin
+  begin
+    insert into public.notifications (user_id, actor_id, type)
+    values (pg_temp.uuid_val('alice'), auth.uid(), 'comment');
+    raise exception 'FAILED: 他人あてのお知らせを作れてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   お知らせは利用者側から作れない';
+  end;
+end;
+$$;
+
+-- 既読にする
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+insert into v select 'read_count', public.mark_notifications_read()::text;
+
+select pg_temp.check(pg_temp.val('read_count')::integer >= 3,
+  'まとめて既読にすると、その件数が返る');
+select pg_temp.check(
+  (select count(*) from public.notifications
+    where user_id = pg_temp.uuid_val('alice') and read_at is null) = 0,
+  '既読にすると未読が残らない');
+
+-- 既読にしたあとの応援は、新しいお知らせとして出す
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+delete from public.reactions
+where post_id = pg_temp.uuid_val('notify_post') and user_id = :'bob';
+insert into public.reactions (post_id, user_id, reaction_type)
+values (pg_temp.uuid_val('notify_post'), :'bob', 'cheer');
+
+reset role;
+select pg_temp.check(
+  (select count(*) from public.notifications
+    where user_id = pg_temp.uuid_val('alice') and type = 'reaction'
+      and post_id = pg_temp.uuid_val('notify_post') and read_at is null) = 1,
+  '既読にしたあとの応援は新しいお知らせになる');
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'reaction') = 2,
+  'まとめる相手は「まだ読んでいないもの」だけ');
+
+-- 受け取らない設定
+update public.profiles set notify_comment = false where id = pg_temp.uuid_val('alice');
+
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+insert into public.comments (post_id, user_id, body)
+values (pg_temp.uuid_val('notify_post'), :'bob', '届かないはずのコメント');
+
+reset role;
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'comment') = 2,
+  'オフにした種類のお知らせは作られない');
+update public.profiles set notify_comment = true where id = pg_temp.uuid_val('alice');
+
+-- 記録を消せばお知らせも残らない
+delete from public.activity_posts where id = pg_temp.uuid_val('notify_post');
+select pg_temp.check(pg_temp.notif_count(pg_temp.uuid_val('alice'), 'reaction') = 0,
+  '記録を削除するとお知らせも残らない');
+
+-- 後片付け。carol は以降のテストで「グループ外の人」として使う。
+delete from public.group_members
+where group_id = pg_temp.uuid_val('group') and user_id = :'carol';
+
+-- -----------------------------------------------------------------------------
+\echo ''
 \echo '== タイマー'
 -- -----------------------------------------------------------------------------
 reset role;

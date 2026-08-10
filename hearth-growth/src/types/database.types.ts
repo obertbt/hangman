@@ -12,6 +12,7 @@ export type Visibility = 'private' | 'group' | 'selected';
 export type SessionStatus = 'running' | 'paused' | 'completed' | 'cancelled';
 export type GroupRole = 'owner' | 'admin' | 'member';
 export type ReactionType = 'cheer' | 'good_job' | 'amazing' | 'together' | 'streak';
+export type NotificationType = 'reaction' | 'comment' | 'group_join';
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -38,6 +39,9 @@ export type ProfileRow = {
   bio: string | null;
   timezone: string;
   default_visibility: Visibility;
+  notify_reaction: boolean;
+  notify_comment: boolean;
+  notify_group_join: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -149,6 +153,22 @@ export type ActivityPhotoRow = {
   /** 非公開バケット内の位置。表示するときだけ期限付き URL を発行する。 */
   storage_path: string;
   sort_order: number;
+  created_at: string;
+};
+
+export type NotificationRow = {
+  id: string;
+  /** 受け取る人 */
+  user_id: string;
+  /** きっかけを作った人。まとめたお知らせでは最後の1人を指す。 */
+  actor_id: string | null;
+  type: NotificationType;
+  post_id: string | null;
+  comment_id: string | null;
+  group_id: string | null;
+  /** まとめた人数。「3人が応援しています」の 3 */
+  actor_count: number;
+  read_at: string | null;
   created_at: string;
 };
 
@@ -294,6 +314,18 @@ export type Database = {
         Partial<ActivityPhotoRow>,
         [Relationship<'post_id', 'activity_posts'>, Relationship<'user_id', 'profiles'>]
       >;
+      notifications: TableShape<
+        NotificationRow,
+        never,
+        Partial<NotificationRow>,
+        [
+          Relationship<'user_id', 'profiles'>,
+          Relationship<'actor_id', 'profiles'>,
+          Relationship<'post_id', 'activity_posts'>,
+          Relationship<'comment_id', 'comments'>,
+          Relationship<'group_id', 'groups'>,
+        ]
+      >;
       daily_goals: TableShape<
         DailyGoalRow,
         Insertable<
@@ -419,6 +451,10 @@ export type Database = {
       };
       get_current_streak: {
         Args: { p_user_id?: string };
+        Returns: number;
+      };
+      mark_notifications_read: {
+        Args: { p_ids?: string[] | null };
         Returns: number;
       };
       get_group_week_summary: {

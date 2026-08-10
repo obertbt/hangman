@@ -7,6 +7,7 @@ import { SignOutButton } from '@/features/auth/components/sign-out-button';
 import { requireProfile } from '@/features/auth/queries';
 import { CategoryManager } from '@/features/categories/components/category-manager';
 import { listCategories } from '@/features/categories/queries';
+import { NotificationSettingsForm } from '@/features/notifications/components/notification-settings-form';
 import { AvatarUploader } from '@/features/profile/components/avatar-uploader';
 import { ProfileForm } from '@/features/profile/components/profile-form';
 
@@ -43,7 +44,14 @@ export default async function SettingsPage() {
           </div>
         </Card>
 
-        <PhasePlaceholder phase={8} title="そのほか" items={['通知設定', 'アカウント削除']} />
+        <Card>
+          <CardTitle>お知らせ</CardTitle>
+          <div className="mt-3">
+            <NotificationSettingsForm profile={profile} />
+          </div>
+        </Card>
+
+        <PhasePlaceholder phase={11} title="そのほか" items={['アカウント削除']} />
 
         <Card>
           <CardTitle>アカウント</CardTitle>

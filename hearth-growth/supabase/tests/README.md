@@ -16,6 +16,9 @@
 - 一般メンバーが管理者操作をできない／作成者を削除できない
 - 記録に添えた写真が、記録本体と同じ範囲にしか見えない
 - 写真は1件につき4枚まで／他人の記録には付けられない／他人の写真は消せない
+- お知らせが本人にだけ届く／自分の行いは自分に通知されない
+- 同じ記録への応援がまとまる／既読にしたあとは新しいお知らせになる
+- お知らせを利用者側から作れない／オフにした種類は作られない
 
 すべての変更は最後に `rollback` するため、データは残りません。
 
@@ -45,6 +48,7 @@ psql hearth_test -f supabase/migrations/0006_post_rpc.sql
 psql hearth_test -f supabase/migrations/0007_active_members_paused_at.sql
 psql hearth_test -f supabase/migrations/0008_summary.sql
 psql hearth_test -f supabase/migrations/0009_activity_photos.sql
+psql hearth_test -f supabase/migrations/0010_notifications.sql
 psql hearth_test -c "grant all on all tables in schema public to anon, authenticated;
                      grant all on all sequences in schema public to anon, authenticated;"
 psql hearth_test -f supabase/tests/rls_test.sql

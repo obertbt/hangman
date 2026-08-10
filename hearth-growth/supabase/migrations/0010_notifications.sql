@@ -1,68 +1,50 @@
--- Hearth Growth セットアップ 7 / 7
--- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
--- 元になっているのは supabase/migrations/ の各ファイルです。
+-- =============================================================================
+-- Hearth Growth : アプリ内のお知らせ
+-- =============================================================================
+-- 「競争しない・静かに続ける」が芯のアプリなので、通知も普通の SNS とは逆に振る。
+--
+--   * 他人が記録を増やすたびには知らせない。知らせるのは自分に向けられたものだけ。
+--   * 応援は1件ずつ数えず、1つの記録につき「何人が応援したか」にまとめる。
+--   * 種類ごとに自分でオフにできる。
+--
+-- お知らせの行はアプリのコードではなくトリガーが作る。
+-- 画面側の書き忘れで「片方の経路だけ通知されない」が起きないようにするため。
+-- =============================================================================
 
-drop policy if exists "activity_photos_read"        on storage.objects;
-drop policy if exists "activity_photos_write_own"   on storage.objects;
-drop policy if exists "activity_photos_delete_own"  on storage.objects;
-
-/*
- * 読み取り。
- *
- * 期限付き URL の発行にも、この権限が要る。
- * つまりここが「誰の写真を誰が見られるか」の実体になる。
- * 記録本体の公開範囲をそのまま参照するので、判断がずれることはない。
- */
-create policy "activity_photos_read" on storage.objects
-  for select to authenticated
-  using (
-    bucket_id = 'activity-photos'
-    and (
-      (storage.foldername(name))[1] = (select auth.uid())::text
-      or exists (
-        select 1 from public.activity_photos p
-        where p.storage_path = storage.objects.name
-          and public.can_view_post(p.post_id)
-      )
-    )
-  );
-
-create policy "activity_photos_write_own" on storage.objects
-  for insert to authenticated
-  with check (
-    bucket_id = 'activity-photos'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
-
-create policy "activity_photos_delete_own" on storage.objects
-  for delete to authenticated
-  using (
-    bucket_id = 'activity-photos'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
-
+-- -----------------------------------------------------------------------------
+-- 受け取り方の設定
+-- -----------------------------------------------------------------------------
 alter table public.profiles
   add column if not exists notify_reaction   boolean not null default true,
   add column if not exists notify_comment    boolean not null default true,
   add column if not exists notify_group_join boolean not null default true;
 
+-- -----------------------------------------------------------------------------
+-- お知らせ本体
+-- -----------------------------------------------------------------------------
 create table public.notifications (
   id         uuid        primary key default gen_random_uuid(),
+  -- 受け取る人
   user_id    uuid        not null references public.profiles (id) on delete cascade,
+  -- きっかけを作った人。まとめたお知らせでは「最後の1人」を指す
   actor_id   uuid        references public.profiles (id) on delete cascade,
   type       text        not null check (type in ('reaction', 'comment', 'group_join')),
   post_id    uuid        references public.activity_posts (id) on delete cascade,
   comment_id uuid        references public.comments (id) on delete cascade,
   group_id   uuid        references public.groups (id) on delete cascade,
+  -- まとめた人数。「3人が応援しています」の 3
   actor_count integer    not null default 1 check (actor_count > 0),
   read_at    timestamptz,
   created_at timestamptz not null default now(),
+  -- 自分の行いを自分に知らせない
   constraint notifications_not_self check (actor_id is null or actor_id <> user_id)
 );
 
+-- 一覧は「自分あて・新しい順」でしか引かない
 create index notifications_user_created_idx
   on public.notifications (user_id, created_at desc);
 
+-- 未読の数はベルの数字として毎回引くので、未読だけの索引を持たせる
 create index notifications_unread_idx
   on public.notifications (user_id)
   where read_at is null;
@@ -78,8 +60,12 @@ create unique index notifications_unread_reaction_per_post
   on public.notifications (user_id, post_id)
   where type = 'reaction' and read_at is null;
 
+-- -----------------------------------------------------------------------------
+-- RLS
+-- -----------------------------------------------------------------------------
 alter table public.notifications enable row level security;
 
+-- 作るのはトリガー（定義者権限）だけ。利用者に INSERT のポリシーは与えない。
 create policy "notifications_select_own" on public.notifications
   for select to authenticated
   using (user_id = (select auth.uid()));
@@ -93,9 +79,13 @@ create policy "notifications_delete_own" on public.notifications
   for delete to authenticated
   using (user_id = (select auth.uid()));
 
+-- -----------------------------------------------------------------------------
+-- 応援がついたとき
+-- -----------------------------------------------------------------------------
 create or replace function public.notify_on_reaction()
 returns trigger
 language plpgsql
+-- 他人あての行を作るため定義者権限で動かす。利用者は INSERT できない。
 security definer
 set search_path = public
 as $$
@@ -130,6 +120,9 @@ create trigger reactions_notify
   after insert on public.reactions
   for each row execute function public.notify_on_reaction();
 
+-- -----------------------------------------------------------------------------
+-- コメントがついたとき
+-- -----------------------------------------------------------------------------
 create or replace function public.notify_on_comment()
 returns trigger
 language plpgsql
@@ -163,6 +156,9 @@ create trigger comments_notify
   after insert on public.comments
   for each row execute function public.notify_on_comment();
 
+-- -----------------------------------------------------------------------------
+-- グループに新しい人が入ったとき
+-- -----------------------------------------------------------------------------
 create or replace function public.notify_on_group_join()
 returns trigger
 language plpgsql
@@ -187,6 +183,9 @@ create trigger group_members_notify
   after insert on public.group_members
   for each row execute function public.notify_on_group_join();
 
+-- -----------------------------------------------------------------------------
+-- 既読にする
+-- -----------------------------------------------------------------------------
 /*
  * まとめて既読にする。
  *

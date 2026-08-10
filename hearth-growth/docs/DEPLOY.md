@@ -32,29 +32,29 @@
 3. SQL Editor に貼り付けて **Run**
 4. `Success. No rows returned` が出たら、次の番号へ
 
-| #   | リンク                                                                                                                            |
-| --- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | [01.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/01.sql) |
-| 2   | [02.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/02.sql) |
-| 3   | [03.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/03.sql) |
-| 4   | [04.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/04.sql) |
-| 5   | [05.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/05.sql) |
-| 6   | [06.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/06.sql) |
-| 7   | [07.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/07.sql) |
+| #   | リンク                                                                                     |
+| --- | ------------------------------------------------------------------------------------------ |
+| 1   | [01.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/01.sql) |
+| 2   | [02.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/02.sql) |
+| 3   | [03.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/03.sql) |
+| 4   | [04.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/04.sql) |
+| 5   | [05.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/05.sql) |
+| 6   | [06.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/06.sql) |
+| 7   | [07.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/07.sql) |
 
 **順番は必ず守ってください。** 後の番号は前の番号で作ったものを使います。
 
 ### 確認
 
-7つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/check.sql) を実行します。
+7つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/check.sql) を実行します。
 こう出れば成功です。
 
 | テーブル数 | 関数の数 | RLSが有効なテーブル数 | ポリシー数 |
 | ---------- | -------- | --------------------- | ---------- |
-| 13         | 20以上   | 13                    | 43         |
+| 14         | 20以上   | 14                    | 46         |
 
 関数の数とポリシー数は環境によって少し前後します。
-**テーブル数と RLS が有効なテーブル数が同じ 13** になっていれば大丈夫です。
+**テーブル数と RLS が有効なテーブル数が同じ 14** になっていれば大丈夫です。
 
 ### やり直したいとき
 
@@ -76,13 +76,14 @@ grant all on all tables in schema public to anon, authenticated, service_role;
 
 01〜07 は「まっさらな状態から作る」ためのものです。
 機能が増えると区切り位置が変わるので、**もう一度 01 から流す必要はありません**。
-増えたぶんだけを [updates/](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/updates/) から実行してください。
+増えたぶんだけを [updates/](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/) から実行してください。
 
-| 追加された機能     | 実行するファイル                                                                                                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/claude/hearth-growth-lifelogging-app-xdzhi3/hearth-growth/supabase/setup/updates/0009_activity_photos.sql) |
+| 追加された機能     | 実行するファイル                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0009_activity_photos.sql) |
+| アプリ内のお知らせ | [0010_notifications.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0010_notifications.sql)     |
 
-実行したあと、上の check.sql でテーブル数が 13 になっていれば成功です。
+実行したあと、上の check.sql でテーブル数が 14 になっていれば成功です。
 
 ## 3. 接続情報を控える
 
@@ -160,6 +161,9 @@ Chrome のメニュー（右上の点3つ）→ **ホーム画面に追加**
 11. **記録に写真を添える** → 終了画面か「手動で記録する」で「写真を選ぶ」（4枚まで）
 12. もう片方のアカウントの **タイムライン** に、その写真が出るか
 13. **「自分だけ」にした記録の写真が、相手からは出ないこと**
+14. **お知らせ**（右上のベル）→ 応援やコメントが届いているか
+15. 同じ記録に2人が応援すると、お知らせが**1件にまとまる**か
+16. **設定 → お知らせ** で種類ごとにオフにできるか
 
 ### 特に見てほしいところ
 

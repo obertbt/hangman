@@ -1,6 +1,6 @@
 'use client';
 
-import { Settings, Users } from 'lucide-react';
+import { Bell, Settings, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -10,11 +10,12 @@ import { cn } from '@/lib/utils/cn';
 /** 画面が広いときだけ出す横のナビゲーション。モバイルでは下部ナビを使う。 */
 const DESKTOP_ITEMS = [
   ...NAV_ITEMS,
+  { href: '/notifications', label: 'お知らせ', icon: Bell },
   { href: '/groups', label: 'グループ', icon: Users },
   { href: '/settings', label: '設定', icon: Settings },
 ];
 
-export function SideNav() {
+export function SideNav({ unreadCount = 0 }: { unreadCount?: number }) {
   const pathname = usePathname();
 
   return (
@@ -40,6 +41,12 @@ export function SideNav() {
               >
                 <Icon aria-hidden size={18} />
                 {label}
+                {href === '/notifications' && unreadCount > 0 ? (
+                  <span className="bg-ember-700 ml-auto min-w-5 rounded-full px-1.5 text-center text-[11px] leading-5 font-medium text-white">
+                    <span className="sr-only">未読 </span>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
