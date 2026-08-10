@@ -13,6 +13,7 @@ import { ActiveMembers } from '@/features/timeline/components/active-members';
 import { AutoRefresh } from '@/features/timeline/components/auto-refresh';
 import { TimelineFeed } from '@/features/timeline/components/timeline-feed';
 import { getActiveMembers, getTimeline } from '@/features/timeline/queries';
+import { SleepShortcut } from '@/features/timer/components/sleep-shortcut';
 import { getActiveSession } from '@/features/timer/queries';
 import { formatDuration } from '@/lib/date/duration';
 import { formatDateLabel, getToday } from '@/lib/date/timezone';
@@ -36,6 +37,9 @@ export default async function HomePage() {
     getTimeline(),
     getGoals(summary.todayDate, summary.weekStart),
   ]);
+
+  // 睡眠のタイマーが動いていれば、ホームでは「起床」だけを出す
+  const isSleeping = activeSession?.category?.name === '睡眠';
 
   return (
     <>
@@ -76,6 +80,18 @@ export default async function HomePage() {
       </div>
 
       <div className="mt-4 space-y-4">
+        <Card>
+          <CardTitle>就寝・起床</CardTitle>
+          <div className="mt-3">
+            <SleepShortcut
+              sleepingSince={isSleeping ? (activeSession?.session.started_at ?? null) : null}
+              otherTimerName={activeSession && !isSleeping ? (activeSession.category?.name ?? '活動') : null}
+              serverNow={activeSession?.serverNow ?? new Date().toISOString()}
+              timeZone={profile.timezone}
+            />
+          </div>
+        </Card>
+
         <Card>
           <CardTitle>今日の目標</CardTitle>
           <div className="mt-3">

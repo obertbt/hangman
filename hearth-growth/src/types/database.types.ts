@@ -85,6 +85,8 @@ export type CategoryRow = {
   color: string;
   sort_order: number;
   is_active: boolean;
+  /** 活動時間の合計に数えるか。睡眠のように、記録はしたいが努力量ではないものは false。 */
+  counts_toward_total: boolean;
   created_at: string;
 };
 
@@ -114,7 +116,6 @@ export type ActivityPostRow = {
   duration_seconds: number;
   activity_date: string;
   visibility: Visibility;
-  group_id: string | null;
   started_at: string | null;
   ended_at: string | null;
   created_at: string;
@@ -125,6 +126,12 @@ export type ActivityPostRow = {
 export type PostAllowedUserRow = {
   post_id: string;
   user_id: string;
+};
+
+/** 記録の公開先グループ。1つの記録を複数のグループへ出せる（0012）。 */
+export type PostGroupRow = {
+  post_id: string;
+  group_id: string;
 };
 
 export type ReactionRow = {
@@ -282,6 +289,12 @@ export type Database = {
           Relationship<'session_id', 'activity_sessions'>,
         ]
       >;
+      post_groups: TableShape<
+        PostGroupRow,
+        PostGroupRow,
+        Partial<PostGroupRow>,
+        [Relationship<'post_id', 'activity_posts'>, Relationship<'group_id', 'groups'>]
+      >;
       post_allowed_users: TableShape<
         PostAllowedUserRow,
         PostAllowedUserRow,
@@ -404,7 +417,7 @@ export type Database = {
           p_duration_seconds?: number | null;
           p_activity_date?: string | null;
           p_visibility?: Visibility;
-          p_group_id?: string | null;
+          p_group_ids?: string[] | null;
           p_allowed_user_ids?: string[] | null;
         };
         Returns: string;
@@ -417,7 +430,7 @@ export type Database = {
           p_duration_seconds?: number | null;
           p_activity_date?: string | null;
           p_visibility?: Visibility;
-          p_group_id?: string | null;
+          p_group_ids?: string[] | null;
           p_allowed_user_ids?: string[] | null;
         };
         Returns: void;
@@ -425,6 +438,22 @@ export type Database = {
       delete_activity_post: {
         Args: { p_post_id: string };
         Returns: void;
+      };
+      share_private_posts: {
+        Args: { p_group_ids: string[] };
+        Returns: number;
+      };
+      delete_group: {
+        Args: { p_group_id: string };
+        Returns: void;
+      };
+      start_sleep: {
+        Args: Record<PropertyKey, never>;
+        Returns: ActivitySessionRow;
+      };
+      wake_up: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
       };
       user_week_start: {
         Args: { p_user_id?: string };

@@ -52,7 +52,7 @@ export function ManualActivityForm({
 
   const [target, setTarget] = useState<VisibilityState>({
     visibility: initialVisibility,
-    groupId: initialVisibility === 'group' ? (groups[0]?.id ?? null) : null,
+    groupIds: initialVisibility === 'group' ? groups.slice(0, 1).map((group) => group.id) : [],
     allowedUserIds: [],
   });
 
@@ -68,7 +68,7 @@ export function ManualActivityForm({
         title,
         body,
         visibility: target.visibility,
-        groupId: target.groupId,
+        groupIds: target.groupIds,
         allowedUserIds: target.allowedUserIds,
       });
       if (!result.ok) {

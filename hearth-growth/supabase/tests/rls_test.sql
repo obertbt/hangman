@@ -67,8 +67,12 @@ select pg_temp.check(
   (select display_name from public.profiles where id = :'alice') = 'あさひ',
   '表示名がメタデータから設定される');
 select pg_temp.check(
-  (select count(*) from public.categories where user_id = :'alice') = 9,
-  '初期カテゴリーが9件作られる');
+  (select count(*) from public.categories where user_id = :'alice') = 10,
+  '初期カテゴリーが10件作られる');
+select pg_temp.check(
+  (select not counts_toward_total from public.categories
+    where user_id = :'alice' and name = '睡眠'),
+  '睡眠は集計に数えないカテゴリーとして作られる');
 
 -- -----------------------------------------------------------------------------
 \echo ''
@@ -155,12 +159,18 @@ insert into v select 'private_post', id::text from created;
 
 with created as (
   insert into public.activity_posts
-    (user_id, category_id, title, duration_seconds, activity_date, visibility, group_id)
-  values (:'alice', pg_temp.uuid_val('category'), 'グループへの記録', 3600, current_date, 'group',
-          pg_temp.uuid_val('group'))
+    (user_id, category_id, title, duration_seconds, activity_date, visibility)
+  values (:'alice', pg_temp.uuid_val('category'), 'グループへの記録', 3600, current_date, 'group')
   returning id
 )
 insert into v select 'group_post', id::text from created;
+
+-- 公開先は中間テーブルで持つ（0012）
+reset role;
+insert into public.post_groups (post_id, group_id)
+values (pg_temp.uuid_val('group_post'), pg_temp.uuid_val('group'));
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
 
 with created as (
   insert into public.activity_posts
@@ -217,12 +227,33 @@ declare v_cat uuid;
 begin
   select id into v_cat from public.categories where user_id = auth.uid() limit 1;
   begin
-    insert into public.activity_posts
-      (user_id, category_id, duration_seconds, activity_date, visibility, group_id)
-    values (auth.uid(), v_cat, 600, current_date, 'group', pg_temp.uuid_val('group'));
+    perform public.create_activity_post(
+      p_category_id      => v_cat,
+      p_duration_seconds => 600,
+      p_visibility       => 'group',
+      p_group_ids        => array[pg_temp.uuid_val('group')]);
     raise exception 'FAILED: 所属していないグループへ公開できてしまった';
   exception when insufficient_privilege then
     raise notice '  ok   所属していないグループへは公開できない';
+  end;
+end;
+$$;
+
+-- 公開先を1つも指定しない group 公開は作れない
+do $$
+declare v_cat uuid;
+begin
+  select id into v_cat from public.categories where user_id = auth.uid() limit 1;
+  begin
+    perform public.create_activity_post(
+      p_category_id      => v_cat,
+      p_duration_seconds => 600,
+      p_visibility       => 'group',
+      p_group_ids        => null);
+    raise exception 'FAILED: 公開先の無いグループ公開を作れてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED:%' then raise; end if;
+    raise notice '  ok   公開先を選ばないグループ公開は作れない';
   end;
 end;
 $$;
@@ -244,9 +275,7 @@ set local role authenticated;
 do $$
 begin
   begin
-    update public.activity_posts
-    set visibility = 'group', group_id = pg_temp.uuid_val('carol_group')
-    where user_id = auth.uid() and visibility = 'private';
+    perform public.share_private_posts(array[pg_temp.uuid_val('carol_group')]);
     raise exception 'FAILED: 所属していないグループへ一括で公開できてしまった';
   exception when insufficient_privilege then
     raise notice '  ok   一括でも、所属していないグループへは公開できない';
@@ -255,9 +284,7 @@ end;
 $$;
 
 -- 自分が入っているグループへならまとめて動かせる
-update public.activity_posts
-set visibility = 'group', group_id = pg_temp.uuid_val('group')
-where user_id = auth.uid() and visibility = 'private' and deleted_at is null;
+select public.share_private_posts(array[pg_temp.uuid_val('group')]);
 
 select pg_temp.check(
   (select visibility from public.activity_posts where id = pg_temp.uuid_val('private_post')) = 'group',
@@ -268,8 +295,9 @@ select pg_temp.check(
 
 -- 後続の検査のために戻す
 reset role;
+delete from public.post_groups where post_id = pg_temp.uuid_val('private_post');
 update public.activity_posts
-set visibility = 'private', group_id = null
+set visibility = 'private'
 where id = pg_temp.uuid_val('private_post');
 
 -- 論理削除。投稿者は自分で deleted_at を立てられ、他人からは見えなくなる。
@@ -540,12 +568,14 @@ select pg_temp.check(
 reset role;
 with created as (
   insert into public.activity_posts
-    (user_id, category_id, title, duration_seconds, activity_date, visibility, group_id)
+    (user_id, category_id, title, duration_seconds, activity_date, visibility)
   values (pg_temp.uuid_val('alice'), pg_temp.uuid_val('category'), 'お知らせの確認', 600,
-          current_date, 'group', pg_temp.uuid_val('group'))
+          current_date, 'group')
   returning id
 )
 insert into v select 'notify_post', id::text from created;
+insert into public.post_groups (post_id, group_id)
+values (pg_temp.uuid_val('notify_post'), pg_temp.uuid_val('group'));
 
 create or replace function pg_temp.notif_count(p_user uuid, p_type text) returns integer
 language sql stable as $$
@@ -951,7 +981,7 @@ insert into v select 'timer_post',
     p_session_id := pg_temp.uuid_val('session'),
     p_duration_seconds := 999999,   -- 無視されるべき値
     p_visibility := 'group',
-    p_group_id := pg_temp.uuid_val('group'))::text;
+    p_group_ids := array[pg_temp.uuid_val('group')])::text;
 
 select pg_temp.check(
   (select duration_seconds between 538 and 542
@@ -1140,7 +1170,7 @@ select public.create_activity_post(
   p_visibility := 'private');
 select public.create_activity_post(
   p_category_id := pg_temp.uuid_val('category'), p_duration_seconds := 1200,
-  p_visibility := 'group', p_group_id := pg_temp.uuid_val('group'));
+  p_visibility := 'group', p_group_ids := array[pg_temp.uuid_val('group')]);
 
 select pg_temp.check(
   (select total_seconds from public.get_group_week_summary(pg_temp.uuid_val('group'))
@@ -1161,6 +1191,205 @@ begin
   end;
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+\echo ''
+\echo '== 複数のグループへの公開'
+-- -----------------------------------------------------------------------------
+-- 1つの記録を2つのグループへ出せること。
+-- そして、その2つのグループの間で中身が混ざらないこと。
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+insert into v select 'group2', public.create_group('もうひとつの部屋', '')::text;
+
+with t as (
+  insert into public.group_invitations (group_id, invited_by)
+  values (pg_temp.uuid_val('group2'), :'alice') returning token)
+insert into v select 'invite2', token from t;
+
+-- carol だけが2つ目のグループに入る（bob は入らない）
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+select public.accept_invitation(pg_temp.val('invite2'));
+
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+
+insert into v select 'multi_post', public.create_activity_post(
+  p_category_id      => pg_temp.uuid_val('category'),
+  p_title            => '2つのグループへ',
+  p_duration_seconds => 1200,
+  p_visibility       => 'group',
+  p_group_ids        => array[pg_temp.uuid_val('group'), pg_temp.uuid_val('group2')])::text;
+
+select pg_temp.check(
+  (select count(*) from public.post_groups where post_id = pg_temp.uuid_val('multi_post')) = 2,
+  '1つの記録を2つのグループへ公開できる');
+
+insert into v select 'one_group_post', public.create_activity_post(
+  p_category_id      => pg_temp.uuid_val('category'),
+  p_title            => '片方のグループだけへ',
+  p_duration_seconds => 600,
+  p_visibility       => 'group',
+  p_group_ids        => array[pg_temp.uuid_val('group2')])::text;
+
+-- bob は group にしか入っていない
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('multi_post')) = 1,
+  '両方に出した記録は、片方のグループの人にも見える');
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('one_group_post')) = 0,
+  '入っていないグループだけに出した記録は見えない');
+
+-- carol は group2 にしか入っていない
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('multi_post')) = 1,
+  '両方に出した記録は、もう片方のグループの人にも見える');
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('one_group_post')) = 1,
+  '公開先のグループにいる人には見える');
+
+-- 公開先の付け替えは RPC だけ。利用者が直接つなぎ替えることはできない。
+do $$
+begin
+  begin
+    insert into public.post_groups (post_id, group_id)
+    values (pg_temp.uuid_val('one_group_post'), pg_temp.uuid_val('group2'));
+    raise exception 'FAILED: 公開先を直接つなげてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   公開先は利用者側から直接つなげない';
+  end;
+end;
+$$;
+
+-- 公開先を1つに減らすと、もう片方からは見えなくなる
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+select public.update_activity_post(
+  p_post_id    => pg_temp.uuid_val('multi_post'),
+  p_title      => '2つのグループへ',
+  p_visibility => 'group',
+  p_group_ids  => array[pg_temp.uuid_val('group2')]);
+
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('multi_post')) = 0,
+  '公開先から外すと、そのグループの人には見えなくなる');
+
+-- -----------------------------------------------------------------------------
+\echo ''
+\echo '== グループの削除'
+-- -----------------------------------------------------------------------------
+-- 消えてよいのは入れ物だけ。記録は誰のものであっても消さない。
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.delete_group(pg_temp.uuid_val('group2'));
+    raise exception 'FAILED: 作成者以外がグループを消せてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   作成者以外はグループを削除できない';
+  end;
+end;
+$$;
+
+reset role;
+insert into v select 'before_delete',
+  (select count(*)::text from public.activity_posts where deleted_at is null);
+
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+select public.delete_group(pg_temp.uuid_val('group2'));
+
+reset role;
+select pg_temp.check(
+  (select count(*) from public.groups where id = pg_temp.uuid_val('group2')) = 0,
+  '作成者はグループを削除できる');
+select pg_temp.check(
+  (select count(*)::text from public.activity_posts where deleted_at is null)
+    = pg_temp.val('before_delete'),
+  'グループを削除しても記録は1件も消えない');
+select pg_temp.check(
+  (select visibility from public.activity_posts where id = pg_temp.uuid_val('one_group_post'))
+    = 'private',
+  '公開先が無くなった記録は「自分だけ」に戻る');
+select pg_temp.check(
+  (select count(*) from public.group_members where group_id = pg_temp.uuid_val('group2')) = 0,
+  'グループを削除するとメンバーの行も消える');
+
+-- -----------------------------------------------------------------------------
+\echo ''
+\echo '== 睡眠（就寝・起床）'
+-- -----------------------------------------------------------------------------
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+
+-- 起きていないのに起床はできない
+do $$
+begin
+  begin
+    perform public.wake_up();
+    raise exception 'FAILED: 寝ていないのに起床できてしまった';
+  exception when sqlstate 'P0002' then
+    raise notice '  ok   就寝していなければ起床できない';
+  end;
+end;
+$$;
+
+insert into v select 'sleep_session', (public.start_sleep()).id::text;
+
+select pg_temp.check(
+  (select c.name from public.activity_sessions s
+    join public.categories c on c.id = s.category_id
+    where s.id = pg_temp.uuid_val('sleep_session')) = '睡眠',
+  '就寝すると睡眠のタイマーが動き出す');
+
+-- 8時間ぶん時計を巻き戻す
+reset role;
+update public.activity_sessions
+set started_at = now() - interval '8 hours'
+where id = pg_temp.uuid_val('sleep_session');
+
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+insert into v select 'sleep_post', public.wake_up()::text;
+
+select pg_temp.check(
+  (select duration_seconds from public.activity_posts where id = pg_temp.uuid_val('sleep_post'))
+    between 8 * 3600 - 60 and 8 * 3600 + 60,
+  '起床すると睡眠時間が記録になる');
+
+-- ここが肝心。睡眠は努力の集計に入れない。
+select pg_temp.check(
+  (select total_seconds from public.get_period_summary(current_date, current_date)) = 0,
+  '睡眠は今日の活動時間に数えない');
+select pg_temp.check(
+  (select count(*) from public.get_category_summary(current_date, current_date)) = 0,
+  '睡眠はカテゴリー別の集計にも出ない');
+select pg_temp.check(
+  public.get_current_streak() = 0,
+  '睡眠だけでは連続記録が伸びない');
+
+-- 記録そのものは残っている
+select pg_temp.check(
+  (select count(*) from public.activity_posts where id = pg_temp.uuid_val('sleep_post')) = 1,
+  '睡眠の記録そのものは残る');
 
 -- -----------------------------------------------------------------------------
 \echo ''

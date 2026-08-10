@@ -1,29 +1,62 @@
--- Hearth Growth セットアップ 5 / 10
+-- Hearth Growth セットアップ 8 / 10
 -- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
 -- 元になっているのは supabase/migrations/ の各ファイルです。
 
-grant execute on function public.cancel_session(uuid)                to authenticated;
+alter table public.activity_posts drop constraint posts_group_visibility_check;
 
-create or replace function public.user_today(p_user_id uuid default auth.uid())
-returns date
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select (now() at time zone coalesce(
-    (select timezone from public.profiles where id = p_user_id),
-    'Asia/Tokyo'
-  ))::date;
-$$;
+drop policy "activity_posts_select_visible" on public.activity_posts;
+drop policy "activity_posts_insert_own" on public.activity_posts;
+drop policy "activity_posts_update_own" on public.activity_posts;
 
-revoke all on function public.user_today(uuid) from public, anon;
-grant execute on function public.user_today(uuid) to authenticated;
+/*
+ * 投稿者は無条件に許可してから deleted_at を見る。順序を入れ替えてはいけない。
+ * 逆にすると、deleted_at を立てた行が自分の SELECT ポリシーを満たさなくなり、
+ * 論理削除の UPDATE 自体が弾かれる（supabase/policies/README.md）。
+ */
+create policy "activity_posts_select_visible" on public.activity_posts
+  for select to authenticated
+  using (
+    user_id = (select auth.uid())
+    or (
+      deleted_at is null
+      and (
+        (
+          visibility = 'group'
+          and exists (
+            select 1 from public.post_groups g
+            where g.post_id = id and public.is_group_member(g.group_id)
+          )
+        )
+        or (
+          visibility = 'selected'
+          and exists (
+            select 1 from public.post_allowed_users a
+            where a.post_id = id and a.user_id = (select auth.uid())
+          )
+        )
+      )
+    )
+  );
+
+create policy "activity_posts_insert_own" on public.activity_posts
+  for insert to authenticated
+  with check (user_id = (select auth.uid()));
+
+create policy "activity_posts_update_own" on public.activity_posts
+  for update to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+alter table public.activity_posts drop column group_id;
+
+drop function if exists public.assert_visibility_target(uuid, text, uuid, uuid[]);
+drop function if exists public.create_activity_post(uuid, uuid, text, text, integer, date, text, uuid, uuid[]);
+drop function if exists public.update_activity_post(uuid, text, text, integer, date, text, uuid, uuid[]);
 
 create or replace function public.assert_visibility_target(
   p_user_id          uuid,
   p_visibility       text,
-  p_group_id         uuid,
+  p_group_ids        uuid[],
   p_allowed_user_ids uuid[]
 )
 returns void
@@ -36,13 +69,18 @@ declare
   v_target uuid;
 begin
   if p_visibility = 'group' then
-    if p_group_id is null then
+    if p_group_ids is null or array_length(p_group_ids, 1) is null then
       raise exception 'group required' using errcode = 'P0001';
     end if;
-    if not public.is_group_member(p_group_id, p_user_id) then
-      raise exception 'not a group member' using errcode = '42501';
+    if array_length(p_group_ids, 1) > 20 then
+      raise exception 'too many groups' using errcode = 'P0001';
     end if;
-  elsif p_group_id is not null then
+    foreach v_target in array p_group_ids loop
+      if not public.is_group_member(v_target, p_user_id) then
+        raise exception 'not a group member' using errcode = '42501';
+      end if;
+    end loop;
+  elsif p_group_ids is not null and array_length(p_group_ids, 1) is not null then
     raise exception 'group not allowed' using errcode = 'P0001';
   end if;
 
@@ -60,8 +98,6 @@ begin
 end;
 $$;
 
-revoke all on function public.assert_visibility_target(uuid, text, uuid, uuid[]) from public, anon;
-
 create or replace function public.create_activity_post(
   p_category_id      uuid    default null,
   p_session_id       uuid    default null,
@@ -70,7 +106,7 @@ create or replace function public.create_activity_post(
   p_duration_seconds integer default null,
   p_activity_date    date    default null,
   p_visibility       text    default 'private',
-  p_group_id         uuid    default null,
+  p_group_ids        uuid[]  default null,
   p_allowed_user_ids uuid[]  default null
 )
 returns uuid
@@ -148,11 +184,11 @@ begin
     raise exception 'duration out of range' using errcode = 'P0001';
   end if;
 
-  perform public.assert_visibility_target(v_user_id, p_visibility, p_group_id, p_allowed_user_ids);
+  perform public.assert_visibility_target(v_user_id, p_visibility, p_group_ids, p_allowed_user_ids);
 
   insert into public.activity_posts (
     user_id, session_id, category_id, title, body,
-    duration_seconds, activity_date, visibility, group_id, started_at, ended_at
+    duration_seconds, activity_date, visibility, started_at, ended_at
   )
   values (
     v_user_id,
@@ -163,11 +199,18 @@ begin
     v_duration,
     v_date,
     p_visibility,
-    case when p_visibility = 'group' then p_group_id else null end,
     v_started_at,
     v_ended_at
   )
   returning id into v_post_id;
+
+  if p_visibility = 'group' then
+    foreach v_target in array p_group_ids loop
+      insert into public.post_groups (post_id, group_id)
+      values (v_post_id, v_target)
+      on conflict do nothing;
+    end loop;
+  end if;
 
   if p_visibility = 'selected' then
     foreach v_target in array p_allowed_user_ids loop
@@ -188,7 +231,7 @@ create or replace function public.update_activity_post(
   p_duration_seconds integer default null,
   p_activity_date    date    default null,
   p_visibility       text    default 'private',
-  p_group_id         uuid    default null,
+  p_group_ids        uuid[]  default null,
   p_allowed_user_ids uuid[]  default null
 )
 returns void
@@ -218,7 +261,7 @@ begin
     raise exception 'invalid visibility' using errcode = 'P0001';
   end if;
 
-  perform public.assert_visibility_target(v_user_id, p_visibility, p_group_id, p_allowed_user_ids);
+  perform public.assert_visibility_target(v_user_id, p_visibility, p_group_ids, p_allowed_user_ids);
 
   if v_post.session_id is null then
     if p_duration_seconds is not null and (p_duration_seconds < 0 or p_duration_seconds > 86400) then
@@ -234,7 +277,6 @@ begin
     title      = nullif(trim(coalesce(p_title, '')), ''),
     body       = nullif(trim(coalesce(p_body, '')), ''),
     visibility = p_visibility,
-    group_id   = case when p_visibility = 'group' then p_group_id else null end,
     -- タイマー由来の記録では時間と日付を据え置く
     duration_seconds = case
       when v_post.session_id is not null then v_post.duration_seconds
@@ -246,8 +288,19 @@ begin
     end
   where id = p_post_id;
 
-  -- 宛先は毎回入れ替える
+  -- 公開先と宛先は毎回入れ替える。
+  -- 先に本体の visibility を更新してあるので、
+  -- 0件になった瞬間に「自分だけ」へ戻す引き金は引かれない。
   delete from public.post_allowed_users where post_id = p_post_id;
+  delete from public.post_groups where post_id = p_post_id;
+
+  if p_visibility = 'group' then
+    foreach v_target in array p_group_ids loop
+      insert into public.post_groups (post_id, group_id)
+      values (p_post_id, v_target)
+      on conflict do nothing;
+    end loop;
+  end if;
 
   if p_visibility = 'selected' then
     foreach v_target in array p_allowed_user_ids loop
@@ -258,31 +311,3 @@ begin
   end if;
 end;
 $$;
-
-create or replace function public.delete_activity_post(p_post_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_user_id uuid := auth.uid();
-begin
-  if v_user_id is null then
-    raise exception 'authentication required' using errcode = '42501';
-  end if;
-
-  update public.activity_posts
-  set deleted_at = now()
-  where id = p_post_id and user_id = v_user_id and deleted_at is null;
-
-  if not found then
-    raise exception 'post not found' using errcode = 'P0002';
-  end if;
-end;
-$$;
-
-revoke all on function public.create_activity_post(uuid, uuid, text, text, integer, date, text, uuid, uuid[])
-  from public, anon;
-revoke all on function public.update_activity_post(uuid, text, text, integer, date, text, uuid, uuid[])
-  from public, anon;

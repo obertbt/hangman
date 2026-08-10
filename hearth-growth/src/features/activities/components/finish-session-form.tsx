@@ -52,7 +52,7 @@ export function FinishSessionForm({
 
   const [target, setTarget] = useState<VisibilityState>({
     visibility: initialVisibility,
-    groupId: initialVisibility === 'group' ? (groups[0]?.id ?? null) : null,
+    groupIds: initialVisibility === 'group' ? groups.slice(0, 1).map((group) => group.id) : [],
     allowedUserIds: [],
   });
 
@@ -64,7 +64,7 @@ export function FinishSessionForm({
         title,
         body,
         visibility: visibility.visibility,
-        groupId: visibility.groupId,
+        groupIds: visibility.groupIds,
         allowedUserIds: visibility.allowedUserIds,
       });
       if (!result.ok) {
@@ -126,7 +126,7 @@ export function FinishSessionForm({
         <Button
           variant="ghost"
           disabled={isPending}
-          onClick={() => submit({ visibility: 'private', groupId: null, allowedUserIds: [] })}
+          onClick={() => submit({ visibility: 'private', groupIds: [], allowedUserIds: [] })}
         >
           非公開で保存する
         </Button>

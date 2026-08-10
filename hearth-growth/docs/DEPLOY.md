@@ -21,7 +21,7 @@
 
 ## 2. テーブルと権限を作る
 
-**7つのファイルを、番号順に1つずつ**貼り付けて実行します。
+**10個のファイルを、番号順に1つずつ**貼り付けて実行します。
 
 長い SQL を一度に貼ると、端末側で途中までしかコピーされないことがあります
 （切れたまま実行すると `syntax error at end of input` で失敗します）。
@@ -41,20 +41,23 @@
 | 5   | [05.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/05.sql) |
 | 6   | [06.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/06.sql) |
 | 7   | [07.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/07.sql) |
+| 8   | [08.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/08.sql) |
+| 9   | [09.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/09.sql) |
+| 10  | [10.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/10.sql) |
 
 **順番は必ず守ってください。** 後の番号は前の番号で作ったものを使います。
 
 ### 確認
 
-7つすべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/check.sql) を実行します。
+10個すべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/check.sql) を実行します。
 こう出れば成功です。
 
 | テーブル数 | 関数の数 | RLSが有効なテーブル数 | ポリシー数 |
 | ---------- | -------- | --------------------- | ---------- |
-| 14         | 20以上   | 14                    | 46         |
+| 15         | 20以上   | 15                    | 47         |
 
 関数の数とポリシー数は環境によって少し前後します。
-**テーブル数と RLS が有効なテーブル数が同じ 14** になっていれば大丈夫です。
+**テーブル数と RLS が有効なテーブル数が同じ 15** になっていれば大丈夫です。
 
 ### やり直したいとき
 
@@ -78,13 +81,18 @@ grant all on all tables in schema public to anon, authenticated, service_role;
 機能が増えると区切り位置が変わるので、**もう一度 01 から流す必要はありません**。
 増えたぶんだけを [updates/](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/) から実行してください。
 
-| 追加された機能     | 実行するファイル                                                                                                                                         |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0009_activity_photos.sql)                   |
-| アプリ内のお知らせ | [0010_notifications.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0010_notifications.sql)                       |
-| 招待リンクの修正   | [0011_invitation_token_urlsafe.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0011_invitation_token_urlsafe.sql) |
+| 追加された機能       | 実行するファイル                                                                                                                                                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 記録に写真を添える   | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0009_activity_photos.sql)                                                                                                                                  |
+| アプリ内のお知らせ   | [0010_notifications.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0010_notifications.sql)                                                                                                                                      |
+| 招待リンクの修正     | [0011_invitation_token_urlsafe.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0011_invitation_token_urlsafe.sql)                                                                                                                |
+| 複数グループへの公開 | [0012_post_groups-1.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0012_post_groups-1.sql) → [0012_post_groups-2.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0012_post_groups-2.sql) |
+| グループの削除       | [0013_delete_group.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0013_delete_group.sql)                                                                                                                                        |
+| 就寝・起床           | [0014_sleep-1.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0014_sleep-1.sql) → [0014_sleep-2.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0014_sleep-2.sql)                         |
 
-実行したあと、上の check.sql でテーブル数が 14 になっていれば成功です。
+`-1` `-2` と分かれているものは、**その順番で続けて**実行してください。
+
+実行したあと、上の check.sql でテーブル数が 15 になっていれば成功です。
 
 ## 3. 接続情報を控える
 
@@ -166,6 +174,11 @@ Chrome のメニュー（右上の点3つ）→ **ホーム画面に追加**
 15. 同じ記録に2人が応援すると、お知らせが**1件にまとまる**か
 16. **設定 → お知らせ** で種類ごとにオフにできるか
 17. **記録** の画面に「◯件が『自分だけ』のままです」が出たら、まとめて公開できるか
+18. グループを2つ作り、1つの記録を**両方に公開**できるか（公開範囲で複数選べます）
+19. 片方のグループにしかいない人から、もう片方だけに出した記録が**見えない**こと
+20. **ホーム → 就寝**を押し、少し経ってから**起床**を押すと睡眠時間が残るか
+21. その睡眠が「**今日の活動時間**」には**入っていない**こと
+22. グループの作成者なら、**グループ設定の下から削除**できるか（記録は消えません）
 
 ### 特に見てほしいところ
 

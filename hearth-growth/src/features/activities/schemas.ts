@@ -15,21 +15,23 @@ import {
 export const visibilityTargetSchema = z
   .object({
     visibility: visibilitySchema,
-    groupId: uuidSchema.nullable().optional(),
+    /** group 公開の宛先。1つの記録を複数のグループへ出せる。 */
+    groupIds: z.array(uuidSchema).max(20).optional(),
     allowedUserIds: z.array(uuidSchema).max(50).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.visibility === 'group' && !value.groupId) {
+    const groupIds = value.groupIds ?? [];
+    if (value.visibility === 'group' && groupIds.length === 0) {
       ctx.addIssue({
         code: 'custom',
-        path: ['groupId'],
+        path: ['groupIds'],
         message: '公開するグループを選んでください',
       });
     }
-    if (value.visibility !== 'group' && value.groupId) {
+    if (value.visibility !== 'group' && groupIds.length > 0) {
       ctx.addIssue({
         code: 'custom',
-        path: ['groupId'],
+        path: ['groupIds'],
         message: 'この公開範囲ではグループを指定できません',
       });
     }
@@ -80,7 +82,7 @@ export const updateActivitySchema = z
  * （宛先を選んである記録を、本人の意図を越えて広げないため）。
  */
 export const sharePrivateActivitiesSchema = z.object({
-  groupId: uuidSchema,
+  groupIds: z.array(uuidSchema).min(1, '公開するグループを選んでください').max(20),
   /** 画面に出した件数。こことずれていたら実行しない。 */
   expectedCount: z.number().int().min(1).max(1000),
 });

@@ -4,7 +4,11 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardTitle } from '@/components/ui/card';
 import { getCurrentProfile } from '@/features/auth/queries';
-import { GroupEditForm, LeaveGroupButton } from '@/features/groups/components/group-settings';
+import {
+  DeleteGroupButton,
+  GroupEditForm,
+  LeaveGroupButton,
+} from '@/features/groups/components/group-settings';
 import { InvitationPanel } from '@/features/groups/components/invitation-panel';
 import { MemberList } from '@/features/groups/components/member-list';
 import { GroupWeekStatus } from '@/features/analytics/components/group-week-status';
@@ -64,6 +68,15 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
             <CardTitle>グループの設定</CardTitle>
             <div className="mt-3">
               <GroupEditForm group={group} />
+            </div>
+          </Card>
+        ) : null}
+
+        {myRole === 'owner' ? (
+          <Card>
+            <CardTitle>グループの削除</CardTitle>
+            <div className="mt-3">
+              <DeleteGroupButton groupId={group.id} groupName={group.name} memberCount={members.length} />
             </div>
           </Card>
         ) : null}

@@ -10,7 +10,6 @@ export interface ActivityListItem {
   durationSeconds: number;
   activityDate: string;
   visibility: Visibility;
-  groupId: string | null;
   fromTimer: boolean;
   category: Pick<CategoryRow, 'id' | 'name' | 'icon' | 'color'> | null;
   photoCount: number;
@@ -19,6 +18,8 @@ export interface ActivityListItem {
 export interface ActivityDetail extends ActivityListItem {
   post: ActivityPostRow;
   allowedUserIds: string[];
+  /** 公開先のグループ。group 公開のときだけ中身がある。 */
+  groupIds: string[];
 }
 
 /**
@@ -99,7 +100,10 @@ export async function getActivityDetail(postId: string): Promise<ActivityDetail 
 
   if (!data) return null;
 
-  const { data: allowed } = await supabase.from('post_allowed_users').select('user_id').eq('post_id', postId);
+  const [{ data: allowed }, { data: groups }] = await Promise.all([
+    supabase.from('post_allowed_users').select('user_id').eq('post_id', postId),
+    supabase.from('post_groups').select('group_id').eq('post_id', postId),
+  ]);
 
   const { category, ...post } = data;
 
@@ -107,6 +111,7 @@ export async function getActivityDetail(postId: string): Promise<ActivityDetail 
     ...toListItem(data),
     post,
     allowedUserIds: (allowed ?? []).map((row) => row.user_id),
+    groupIds: (groups ?? []).map((row) => row.group_id),
     category,
   };
 }
@@ -151,7 +156,6 @@ function toListItem(row: PostWithCategory): ActivityListItem {
     durationSeconds: row.duration_seconds,
     activityDate: row.activity_date,
     visibility: row.visibility,
-    groupId: row.group_id,
     fromTimer: row.session_id !== null,
     category: row.category,
     photoCount: row.activity_photos?.[0]?.count ?? 0,

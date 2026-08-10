@@ -7,7 +7,8 @@ import type { Visibility } from '@/types/database.types';
 
 export interface VisibilityState {
   visibility: Visibility;
-  groupId: string | null;
+  /** group 公開の宛先。複数のグループへ同時に出せる。 */
+  groupIds: string[];
   allowedUserIds: string[];
 }
 
@@ -28,10 +29,24 @@ export function VisibilityPicker({ value, onChange, groups, reachableUsers }: Vi
   const select = (visibility: Visibility) => {
     onChange({
       visibility,
-      // group 以外ではグループを持たない（DB の CHECK 制約と同じ条件）
-      groupId: visibility === 'group' ? (value.groupId ?? groups[0]?.id ?? null) : null,
+      // group 以外では公開先を持たない（DB 側の検証と同じ条件）
+      groupIds:
+        visibility === 'group'
+          ? value.groupIds.length > 0
+            ? value.groupIds
+            : groups.slice(0, 1).map((group) => group.id)
+          : [],
       allowedUserIds: visibility === 'selected' ? value.allowedUserIds : [],
     });
+  };
+
+  /** 公開先の付け外し。最後の1つは外せない（誰にも届かなくなるため）。 */
+  const toggleGroup = (groupId: string) => {
+    const next = value.groupIds.includes(groupId)
+      ? value.groupIds.filter((id) => id !== groupId)
+      : [...value.groupIds, groupId];
+    if (next.length === 0) return;
+    onChange({ ...value, groupIds: next });
   };
 
   const toggleUser = (userId: string) => {
@@ -78,25 +93,27 @@ export function VisibilityPicker({ value, onChange, groups, reachableUsers }: Vi
 
       {value.visibility === 'group' && groups.length > 1 ? (
         <fieldset>
-          <legend className="pb-2 text-sm font-medium">どのグループへ</legend>
+          <legend className="pb-2 text-sm font-medium">どのグループへ（複数選べます）</legend>
           <div className="flex flex-wrap gap-2">
-            {groups.map((group) => (
-              <button
-                key={group.id}
-                type="button"
-                aria-pressed={value.groupId === group.id}
-                onClick={() => onChange({ ...value, groupId: group.id })}
-                className={cn(
-                  'min-h-9 rounded-full border px-3 text-xs',
-                  value.groupId === group.id
-                    ? 'border-ember-500 bg-ember-500/10 font-medium'
-                    : 'border-[--color-border]',
-                )}
-              >
-                {group.name}
-              </button>
-            ))}
+            {groups.map((group) => {
+              const isSelected = value.groupIds.includes(group.id);
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => toggleGroup(group.id)}
+                  className={cn(
+                    'min-h-9 rounded-full border px-3 text-xs',
+                    isSelected ? 'border-ember-500 bg-ember-500/10 font-medium' : 'border-[--color-border]',
+                  )}
+                >
+                  {group.name}
+                </button>
+              );
+            })}
           </div>
+          <p className="mt-2 text-xs text-[--color-muted]">選んだグループすべてに、同じ記録が並びます。</p>
         </fieldset>
       ) : null}
 

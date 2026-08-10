@@ -29,7 +29,7 @@ export function EditActivityForm({ activity, today, groups, reachableUsers }: Ed
   const [activityDate, setActivityDate] = useState(activity.activityDate);
   const [target, setTarget] = useState<VisibilityState>({
     visibility: activity.visibility,
-    groupId: activity.groupId,
+    groupIds: activity.groupIds,
     allowedUserIds: activity.allowedUserIds,
   });
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function EditActivityForm({ activity, today, groups, reachableUsers }: Ed
         durationSeconds: activity.fromTimer ? undefined : toDurationSeconds(hours, minutes),
         activityDate: activity.fromTimer ? undefined : activityDate,
         visibility: target.visibility,
-        groupId: target.groupId,
+        groupIds: target.groupIds,
         allowedUserIds: target.allowedUserIds,
       });
       if (result.ok) {

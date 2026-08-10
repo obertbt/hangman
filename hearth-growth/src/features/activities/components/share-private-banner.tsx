@@ -49,7 +49,7 @@ export function SharePrivateBanner({ privateCount, groups }: SharePrivateBannerP
 
     setError(null);
     startTransition(async () => {
-      const result = await sharePrivateActivitiesAction({ groupId, expectedCount: privateCount });
+      const result = await sharePrivateActivitiesAction({ groupIds: [groupId], expectedCount: privateCount });
       if (result.ok) {
         setSharedCount(result.data);
         router.refresh();

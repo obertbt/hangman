@@ -47,7 +47,7 @@ export async function createFromSessionAction(input: CreateFromSessionInput): Pr
     p_title: parsed.data.title || null,
     p_body: parsed.data.body || null,
     p_visibility: parsed.data.visibility,
-    p_group_id: parsed.data.groupId ?? null,
+    p_group_ids: parsed.data.groupIds ?? null,
     p_allowed_user_ids: parsed.data.allowedUserIds ?? null,
   });
 
@@ -70,7 +70,7 @@ export async function createManualAction(input: CreateManualInput): Promise<Acti
     p_duration_seconds: parsed.data.durationSeconds,
     p_activity_date: parsed.data.activityDate,
     p_visibility: parsed.data.visibility,
-    p_group_id: parsed.data.groupId ?? null,
+    p_group_ids: parsed.data.groupIds ?? null,
     p_allowed_user_ids: parsed.data.allowedUserIds ?? null,
   });
 
@@ -92,7 +92,7 @@ export async function updateActivityAction(input: UpdateActivityInput): Promise<
     p_duration_seconds: parsed.data.durationSeconds ?? null,
     p_activity_date: parsed.data.activityDate ?? null,
     p_visibility: parsed.data.visibility,
-    p_group_id: parsed.data.groupId ?? null,
+    p_group_ids: parsed.data.groupIds ?? null,
     p_allowed_user_ids: parsed.data.allowedUserIds ?? null,
   });
 
@@ -153,16 +153,13 @@ export async function sharePrivateActivitiesAction(
     return fail('記録の数が変わりました。画面を開き直してから、もう一度お試しください。');
   }
 
-  const { data, error } = await supabase
-    .from('activity_posts')
-    .update({ visibility: 'group', group_id: parsed.data.groupId })
-    .eq('user_id', user.id)
-    .eq('visibility', 'private')
-    .is('deleted_at', null)
-    .select('id');
+  // 本体と公開先の2か所を触るので、まとめて DB 側の手続きに任せる
+  const { data, error } = await supabase.rpc('share_private_posts', {
+    p_group_ids: parsed.data.groupIds,
+  });
 
   if (error) return fail(toActivityErrorMessage(error));
 
   revalidateActivityViews();
-  return ok(data?.length ?? 0);
+  return ok(data ?? 0);
 }

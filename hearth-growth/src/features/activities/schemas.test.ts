@@ -16,15 +16,22 @@ describe('visibilityTargetSchema', () => {
     expect(visibilityTargetSchema.safeParse({ visibility: 'private' }).success).toBe(true);
   });
 
-  it('group はグループの指定が要る', () => {
+  it('group は公開先を1つ以上求める', () => {
     expect(visibilityTargetSchema.safeParse({ visibility: 'group' }).success).toBe(false);
-    expect(visibilityTargetSchema.safeParse({ visibility: 'group', groupId: uuid(1) }).success).toBe(true);
+    expect(visibilityTargetSchema.safeParse({ visibility: 'group', groupIds: [] }).success).toBe(false);
+    expect(visibilityTargetSchema.safeParse({ visibility: 'group', groupIds: [uuid(1)] }).success).toBe(true);
+  });
+
+  it('group は複数のグループへ同時に出せる', () => {
+    expect(
+      visibilityTargetSchema.safeParse({ visibility: 'group', groupIds: [uuid(1), uuid(2)] }).success,
+    ).toBe(true);
   });
 
   it('group 以外でグループを指定させない', () => {
-    const result = visibilityTargetSchema.safeParse({ visibility: 'private', groupId: uuid(1) });
+    const result = visibilityTargetSchema.safeParse({ visibility: 'private', groupIds: [uuid(1)] });
     expect(result.success).toBe(false);
-    expect(result.error?.issues[0].path).toEqual(['groupId']);
+    expect(result.error?.issues[0].path).toEqual(['groupIds']);
   });
 
   it('selected は宛先が1人以上要る', () => {
@@ -106,17 +113,23 @@ describe('toDurationSeconds / fromDurationSeconds', () => {
 });
 
 describe('sharePrivateActivitiesSchema', () => {
-  const groupId = '00000000-0000-4000-8000-000000000001';
+  const groupIds = ['00000000-0000-4000-8000-000000000001'];
 
   it('件数とグループがそろっていれば通る', () => {
-    expect(sharePrivateActivitiesSchema.safeParse({ groupId, expectedCount: 3 }).success).toBe(true);
+    expect(sharePrivateActivitiesSchema.safeParse({ groupIds, expectedCount: 3 }).success).toBe(true);
+  });
+
+  it('複数のグループへまとめて公開できる', () => {
+    const two = [...groupIds, '00000000-0000-4000-8000-000000000002'];
+    expect(sharePrivateActivitiesSchema.safeParse({ groupIds: two, expectedCount: 3 }).success).toBe(true);
   });
 
   it('0件では実行させない', () => {
-    expect(sharePrivateActivitiesSchema.safeParse({ groupId, expectedCount: 0 }).success).toBe(false);
+    expect(sharePrivateActivitiesSchema.safeParse({ groupIds, expectedCount: 0 }).success).toBe(false);
   });
 
-  it('公開先の指定が無ければ弾く', () => {
-    expect(sharePrivateActivitiesSchema.safeParse({ groupId: 'x', expectedCount: 3 }).success).toBe(false);
+  it('公開先を選んでいなければ弾く', () => {
+    expect(sharePrivateActivitiesSchema.safeParse({ groupIds: [], expectedCount: 3 }).success).toBe(false);
+    expect(sharePrivateActivitiesSchema.safeParse({ groupIds: ['x'], expectedCount: 3 }).success).toBe(false);
   });
 });

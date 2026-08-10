@@ -29,6 +29,7 @@
 | `categories`                   | 自分の個人カテゴリー or 所属グループのカテゴリー                                                                          | 個人は本人、グループは管理者                        | 同上                               | 同上                                               |
 | `activity_sessions`            | 本人のみ                                                                                                                  | 本人のみ                                            | 本人のみ                           | 本人のみ                                           |
 | `activity_posts`               | 本人（論理削除したものも含む） / group 公開かつメンバー / selected かつ許可ユーザー（他人には `deleted_at is null` のみ） | 本人。group 公開は所属グループのみ                  | 本人。group 公開は所属グループのみ | 本人                                               |
+| `post_groups`                  | 投稿者 or 公開先グループのメンバー                                                                                        | **不可**（付け替えは RPC だけ）                     | 不可                               | 不可                                               |
 | `post_allowed_users`           | 投稿者 or 自分が対象の行                                                                                                  | 投稿者                                              | 投稿者                             |
 | `reactions`                    | 元投稿を閲覧できる人                                                                                                      | 本人 かつ 元投稿を閲覧できる                        | 本人                               | 本人                                               |
 | `comments`                     | 本人（論理削除したものも含む）/ 元投稿を閲覧できる人（非表示コメントは投稿者のみ）                                        | 本人 かつ 元投稿を閲覧できる                        | 本人                               | 本人 or 投稿者                                     |
@@ -48,6 +49,9 @@
 | `accept_invitation(token)`               | 期限・失効・利用上限の検証と `used_count` の加算を原子的に行うため                                                |
 | `get_active_group_members()`             | セッション行は本人のみ閲覧可。ホーム画面に必要な列（カテゴリー・開始時刻）だけを返す。`title` / `note` は返さない |
 | `set_comment_hidden(comment_id, hidden)` | 投稿者にコメントの非表示だけを許可し、本文の書き換えは許可しないため                                              |
+| `delete_group(group_id)`                 | 入れ物だけを消し、記録は残すため。グループのカテゴリーを使っている記録は、持ち主の個人カテゴリーへ移してから消す  |
+| `share_private_posts(group_ids)`         | 本体の公開範囲と公開先の2か所を、まとめて書き換えるため                                                           |
+| `start_sleep()` / `wake_up()`            | 就寝・起床を1タップにするため。睡眠カテゴリーの用意とタイマーの開始・終了・記録化をまとめて行う                   |
 | `mark_notifications_read(ids?)`          | 「すべて既読にする」を1往復で終わらせるため。`security invoker` なので、既読にできるのは自分あてだけ              |
 
 ## 論理削除と SELECT ポリシー（重要）
@@ -81,6 +85,17 @@
 
 応援だけは「同じ記録への未読のお知らせ」を1件に束ねます
 （部分一意インデックス `notifications_unread_reaction_per_post` ＋ `on conflict`）。
+
+## 公開先が複数あること（0012）
+
+`activity_posts.group_id` は廃止し、公開先は `post_groups` で持ちます。
+1つの記録を複数のグループへ同時に出せます。
+
+`can_view_post()` もこの表を見ます。付け替えは RPC だけに許し、
+利用者に insert を与えていません。自分の記録を勝手なグループへ結び付けられないためです。
+
+公開先が0件になると `post_groups_normalize` が本体を「自分だけ」へ戻します。
+グループを消したときに「グループ公開なのに誰にも届かない」状態を残さないためです。
 
 ## Storage のポリシー
 

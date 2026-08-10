@@ -1,4 +1,4 @@
--- Hearth Growth セットアップ 7 / 7
+-- Hearth Growth セットアップ 7 / 10
 -- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
 -- 元になっているのは supabase/migrations/ の各ファイルです。
 
@@ -226,3 +226,82 @@ alter table public.group_invitations
 update public.group_invitations
 set token = rtrim(token, '=')
 where token like '%=';
+
+create table public.post_groups (
+  post_id  uuid not null references public.activity_posts (id) on delete cascade,
+  group_id uuid not null references public.groups (id) on delete cascade,
+  primary key (post_id, group_id)
+);
+
+create index post_groups_group_id_idx on public.post_groups (group_id);
+
+insert into public.post_groups (post_id, group_id)
+select id, group_id
+from public.activity_posts
+where visibility = 'group' and group_id is not null
+on conflict do nothing;
+
+alter table public.post_groups enable row level security;
+
+create policy "post_groups_select_visible" on public.post_groups
+  for select to authenticated
+  using (public.is_post_owner(post_id) or public.is_group_member(group_id));
+
+/*
+ * グループが削除されると、この表の行も一緒に消える。
+ * そのとき visibility だけ 'group' のまま残ると、
+ * 「グループ公開のはずなのに誰にも届かない」状態になる。
+ * 実態に合わせて「自分だけ」へ戻す。
+ */
+create or replace function public.normalize_post_visibility()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.activity_posts p
+  set visibility = 'private'
+  where p.id = old.post_id
+    and p.visibility = 'group'
+    and not exists (select 1 from public.post_groups g where g.post_id = p.id);
+
+  return null;
+end;
+$$;
+
+create trigger post_groups_normalize
+  after delete on public.post_groups
+  for each row execute function public.normalize_post_visibility();
+
+create or replace function public.can_view_post(p_post_id uuid, p_user_id uuid default auth.uid())
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.activity_posts p
+    where p.id = p_post_id
+      and p.deleted_at is null
+      and (
+        p.user_id = p_user_id
+        or (
+          p.visibility = 'group'
+          and exists (
+            select 1 from public.post_groups g
+            where g.post_id = p.id and public.is_group_member(g.group_id, p_user_id)
+          )
+        )
+        or (
+          p.visibility = 'selected'
+          and exists (
+            select 1 from public.post_allowed_users a
+            where a.post_id = p.id and a.user_id = p_user_id
+          )
+        )
+      )
+  );
+$$;

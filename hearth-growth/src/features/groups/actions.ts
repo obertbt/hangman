@@ -20,6 +20,7 @@ import {
 } from '@/features/groups/schemas';
 import { fail, ok, type ActionResult } from '@/lib/actions/result';
 import { createClient } from '@/lib/supabase/server';
+import { uuidSchema } from '@/lib/validations/common';
 
 /**
  * グループ操作。
@@ -237,5 +238,36 @@ export async function leaveGroupAction(groupId: string): Promise<ActionResult> {
   }
 
   revalidatePath('/groups');
+  redirect('/groups');
+}
+
+/**
+ * グループを削除する。
+ *
+ * 消えるのは入れ物だけ。メンバーが積み上げた記録は、誰のものであっても残る。
+ * 公開先が無くなった記録は「自分だけ」に戻る（0012 / 0013）。
+ *
+ * カテゴリーの付け替えまで含めて1つの手続きにしたいので DB 側で行う。
+ * 途中で失敗すると、記録が参照先を失って壊れるため。
+ */
+export async function deleteGroupAction(groupId: string): Promise<ActionResult> {
+  const parsed = uuidSchema.safeParse(groupId);
+  if (!parsed.success) return fail('このグループは見つかりませんでした。');
+
+  const { supabase, user } = await requireUser();
+  if (!user) return fail('ログインの有効期限が切れました。もう一度ログインしてください。');
+
+  const { error } = await supabase.rpc('delete_group', { p_group_id: parsed.data });
+
+  if (error) {
+    console.error('deleteGroupAction failed', error);
+    if (error.code === '42501') return fail('グループを削除できるのは作成者だけです。');
+    return fail(GENERIC_ERROR_MESSAGE);
+  }
+
+  revalidatePath('/groups');
+  revalidatePath('/timeline');
+  revalidatePath('/activities');
+  revalidatePath('/home');
   redirect('/groups');
 }

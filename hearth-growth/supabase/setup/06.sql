@@ -1,4 +1,4 @@
--- Hearth Growth セットアップ 6 / 7
+-- Hearth Growth セットアップ 6 / 10
 -- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
 -- 元になっているのは supabase/migrations/ の各ファイルです。
 
