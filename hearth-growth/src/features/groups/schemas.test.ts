@@ -4,6 +4,7 @@ import {
   createGroupSchema,
   createInvitationSchema,
   invitationTokenSchema,
+  normalizeInvitationToken,
   updateMemberRoleSchema,
 } from './schemas';
 
@@ -60,6 +61,63 @@ describe('invitationTokenSchema', () => {
 
   it('短すぎるトークンを弾く', () => {
     expect(invitationTokenSchema.safeParse('abc').success).toBe(false);
+  });
+});
+
+/**
+ * 実際に配られる招待リンクの形。
+ *
+ * 0011 より前のトークンは base64 の詰め物（末尾の `=`）を持っていた。
+ * さらに Next.js は経路の `=` を復号せず `%3D` のまま渡す。
+ * この2つが重なって、発行したリンクがすべて弾かれていた。
+ */
+describe('normalizeInvitationToken', () => {
+  // 32byte 乱数を base64 にしたときの実際の形（末尾に詰め物が付く）
+  const padded = 'm8jtSqjLUEdeDr39_Ua9z4N3jn7PL3JhBOqq4IoSISQ=';
+  const bare = 'm8jtSqjLUEdeDr39_Ua9z4N3jn7PL3JhBOqq4IoSISQ';
+
+  it('Next.js が復号せずに渡す %3D を戻して落とす', () => {
+    expect(normalizeInvitationToken(`${bare}%3D`)).toBe(bare);
+  });
+
+  it('詰め物付きのトークンをそろえる', () => {
+    expect(normalizeInvitationToken(padded)).toBe(bare);
+  });
+
+  it('二重に符号化されていても戻す', () => {
+    expect(normalizeInvitationToken(`${bare}%253D`)).toBe(bare);
+  });
+
+  it('前後の空白を落とす', () => {
+    expect(normalizeInvitationToken(`  ${padded}  `)).toBe(bare);
+  });
+
+  it('詰め物の無いトークンはそのまま', () => {
+    expect(normalizeInvitationToken(bare)).toBe(bare);
+  });
+
+  it('壊れた符号化でも例外にしない', () => {
+    expect(() => normalizeInvitationToken('%E0%A4%A')).not.toThrow();
+  });
+});
+
+describe('実際に配られる招待リンクが通ること', () => {
+  const padded = 'm8jtSqjLUEdeDr39_Ua9z4N3jn7PL3JhBOqq4IoSISQ=';
+  const bare = 'm8jtSqjLUEdeDr39_Ua9z4N3jn7PL3JhBOqq4IoSISQ';
+
+  it('%3D 付きで届いても通り、詰め物を落とした形で返る', () => {
+    const result = invitationTokenSchema.safeParse(`${bare}%3D`);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data).toBe(bare);
+  });
+
+  it('詰め物付きでも通る（0011 より前に配ったリンク）', () => {
+    expect(invitationTokenSchema.safeParse(padded).success).toBe(true);
+  });
+
+  it('そろえたあとも、パス操作に使える文字は弾く', () => {
+    expect(invitationTokenSchema.safeParse('abcDEFabcDEFabcDEF%2F%2E%2E').success).toBe(false);
+    expect(invitationTokenSchema.safeParse('%2E%2E%2Fetc%2Fpasswdxxxxxxxxxx').success).toBe(false);
   });
 });
 

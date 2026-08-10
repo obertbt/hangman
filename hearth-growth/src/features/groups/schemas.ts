@@ -49,12 +49,47 @@ export const updateMemberRoleSchema = memberTargetSchema.extend({
   role: groupRoleSchema.exclude(['owner']),
 });
 
-/** 招待トークン。URL-safe base64 の文字だけを受け付ける。 */
+/**
+ * URL から受け取った招待トークンをそろえる。
+ *
+ * 2つの事情を吸収する。
+ *
+ *   * Next.js は経路の `=` を復号せず `%3D` のまま渡す。
+ *     `%2D` は `-` に復号されるのに `=` はされない、という非対称がある。
+ *   * 0011 より前に発行したトークンは base64 の詰め物（末尾の `=`）を持つ。
+ *     DB 側も詰め物を落としてそろえたので、受け取り側でも同じように落とす。
+ *
+ * これで、すでに配ってしまった `=` 付きのリンクもそのまま使える。
+ */
+export function normalizeInvitationToken(raw: string): string {
+  let value = raw.trim();
+
+  // 二重に符号化されて届くこともあるため、変化しなくなるまで戻す
+  for (let i = 0; i < 3 && value.includes('%'); i += 1) {
+    try {
+      const decoded = decodeURIComponent(value);
+      if (decoded === value) break;
+      value = decoded;
+    } catch {
+      // 壊れた符号化はここで諦める。あとの形式検査が弾く。
+      break;
+    }
+  }
+
+  return value.trim().replace(/=+$/, '');
+}
+
+/** 招待トークン。詰め物を落としたあとの base64url の文字だけを受け付ける。 */
 export const invitationTokenSchema = z
   .string()
-  .min(20, '招待リンクが正しくありません')
-  .max(128, '招待リンクが正しくありません')
-  .regex(/^[A-Za-z0-9_-]+=*$/, '招待リンクが正しくありません');
+  .transform(normalizeInvitationToken)
+  .pipe(
+    z
+      .string()
+      .min(20, '招待リンクが正しくありません')
+      .max(128, '招待リンクが正しくありません')
+      .regex(/^[A-Za-z0-9_-]+$/, '招待リンクが正しくありません'),
+  );
 
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;

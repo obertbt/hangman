@@ -78,10 +78,11 @@ grant all on all tables in schema public to anon, authenticated, service_role;
 機能が増えると区切り位置が変わるので、**もう一度 01 から流す必要はありません**。
 増えたぶんだけを [updates/](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/) から実行してください。
 
-| 追加された機能     | 実行するファイル                                                                                                                       |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0009_activity_photos.sql) |
-| アプリ内のお知らせ | [0010_notifications.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0010_notifications.sql)     |
+| 追加された機能     | 実行するファイル                                                                                                                                         |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 記録に写真を添える | [0009_activity_photos.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0009_activity_photos.sql)                   |
+| アプリ内のお知らせ | [0010_notifications.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0010_notifications.sql)                       |
+| 招待リンクの修正   | [0011_invitation_token_urlsafe.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0011_invitation_token_urlsafe.sql) |
 
 実行したあと、上の check.sql でテーブル数が 14 になっていれば成功です。
 

@@ -215,3 +215,14 @@ $$;
 
 revoke all on function public.mark_notifications_read(uuid[]) from public, anon;
 grant execute on function public.mark_notifications_read(uuid[]) to authenticated;
+
+alter table public.group_invitations
+  alter column token set default translate(
+    encode(gen_random_bytes(32), 'base64'),
+    '+/=',
+    '-_'
+  );
+
+update public.group_invitations
+set token = rtrim(token, '=')
+where token like '%=';

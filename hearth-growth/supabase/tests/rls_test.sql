@@ -92,6 +92,14 @@ with created as (
 insert into v select 'invite', token from created;
 
 select pg_temp.check(length(pg_temp.val('invite')) >= 40, '招待トークンが十分に長い');
+/*
+ * 詰め物（末尾の `=`）を持たせない。
+ *
+ * `=` が付くと、URL の経路に置いたとき %3D として渡り、受け取り側で弾かれる。
+ * base64url が詰め物を持たない仕様なのは、まさにこれを避けるため。
+ */
+select pg_temp.check(pg_temp.val('invite') ~ '^[A-Za-z0-9_-]+$',
+  '招待トークンがそのまま URL に置ける文字だけでできている');
 
 -- 参加していない carol には何も見えない
 reset role;

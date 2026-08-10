@@ -161,6 +161,7 @@ npm run db:reset        # migrations と seed.sql を流し直す
 | `0008_summary.sql`                  | 週次・カテゴリー別の集計と連続日数                 |
 | `0009_activity_photos.sql`          | 活動記録の写真（非公開バケットとそのポリシー）     |
 | `0010_notifications.sql`            | アプリ内のお知らせ（行はトリガーが作る）           |
+| `0011_invitation_token_urlsafe.sql` | 招待トークンから base64 の詰め物を外す             |
 
 RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確認できます
 （[実行方法](supabase/tests/README.md)）。
