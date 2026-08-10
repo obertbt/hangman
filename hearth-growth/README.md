@@ -198,6 +198,7 @@ http://localhost:3000 を開きます。
 | `npm run db:reset`   | ローカル DB をマイグレーションから作り直す             |
 | `npm run db:types`   | ローカル DB から型定義を再生成する                     |
 | `npm run db:bundle`  | `supabase/setup.sql` と `supabase/setup/` を作り直す   |
+| `npm run db:selects` | 埋め込み select が PostgREST で解決できるか確かめる    |
 
 ## ディレクトリ構成
 

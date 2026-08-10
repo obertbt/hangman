@@ -16,7 +16,8 @@
     "db:types": "supabase gen types typescript --local > src/types/database.types.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "db:bundle": "node scripts/bundle-migrations.mjs && node scripts/split-setup.mjs"
+    "db:bundle": "node scripts/bundle-migrations.mjs && node scripts/split-setup.mjs",
+    "db:selects": "node scripts/check-selects.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

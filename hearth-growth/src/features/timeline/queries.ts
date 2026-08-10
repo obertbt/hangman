@@ -33,12 +33,30 @@ export interface TimelinePage {
   items: TimelineItem[];
   /** 次のページを取るための created_at。null なら最後まで読み込み済み。 */
   nextCursor: string | null;
+  /**
+   * 読み込みに失敗したか。
+   *
+   * 「まだ投稿がない」と「読み込めなかった」は画面上まったく別のことなのに、
+   * 失敗を空配列で返すと同じ見た目になる。実際それで、
+   * 埋め込み select の誤りに長いあいだ気づけなかった。区別できるようにしておく。
+   */
+  failed?: boolean;
 }
 
+/**
+ * `profiles` は必ず `!user_id` で指定する。
+ *
+ * activity_posts から profiles へは2つの道がある。
+ *   * activity_posts.user_id →（投稿者）
+ *   * post_allowed_users を挟んだ多対多 →（「選んだ人」の宛先）
+ *
+ * 指定しないと PostgREST が「どちらか分からない」と断る（PGRST201）。
+ * その失敗は型検査では見えないので、scripts/check-selects.mjs で確かめている。
+ */
 const SELECT_COLUMNS = `
   id, user_id, title, body, duration_seconds, activity_date, visibility, created_at,
   category:categories(name, icon, color),
-  profile:profiles(display_name, avatar_url),
+  profile:profiles!user_id(display_name, avatar_url),
   reactions(count),
   comments(count)
 `;
@@ -78,7 +96,7 @@ export async function getTimeline({
 
   if (error) {
     console.error('getTimeline failed', error);
-    return { items: [], nextCursor: null };
+    return { items: [], nextCursor: null, failed: true };
   }
 
   const rows = data ?? [];

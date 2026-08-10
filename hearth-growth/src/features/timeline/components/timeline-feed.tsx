@@ -42,6 +42,18 @@ export function TimelineFeed({ initialPage, timeZone, emptyMessage }: TimelineFe
     });
   };
 
+  // 「まだ無い」と「読み込めなかった」を同じ見た目にしない
+  if (initialPage.failed) {
+    return (
+      <Card className="text-center">
+        <p className="text-sm font-medium">タイムラインを読み込めませんでした。</p>
+        <p className="mt-1 text-sm text-[--color-muted]">
+          しばらくしてから開き直してください。続くようなら、設定の状態を確認してください。
+        </p>
+      </Card>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <Card className="text-center">
