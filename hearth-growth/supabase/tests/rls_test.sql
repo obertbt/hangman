@@ -227,8 +227,52 @@ begin
 end;
 $$;
 
--- 論理削除。投稿者は自分で deleted_at を立てられ、他人からは見えなくなる。
+/*
+ * あとからまとめて公開範囲を広げる経路。
+ *
+ * グループを作る前の記録は「自分だけ」になる。参加後にまとめて公開できるが、
+ * その一括更新でも、所属していないグループへは出せないことを確かめる。
+ */
 reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+insert into v select 'carol_group', public.create_group('かおるの部屋', '')::text;
+
+reset role;
+select set_config('request.jwt.claim.sub', :'alice', true);
+set local role authenticated;
+do $$
+begin
+  begin
+    update public.activity_posts
+    set visibility = 'group', group_id = pg_temp.uuid_val('carol_group')
+    where user_id = auth.uid() and visibility = 'private';
+    raise exception 'FAILED: 所属していないグループへ一括で公開できてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   一括でも、所属していないグループへは公開できない';
+  end;
+end;
+$$;
+
+-- 自分が入っているグループへならまとめて動かせる
+update public.activity_posts
+set visibility = 'group', group_id = pg_temp.uuid_val('group')
+where user_id = auth.uid() and visibility = 'private' and deleted_at is null;
+
+select pg_temp.check(
+  (select visibility from public.activity_posts where id = pg_temp.uuid_val('private_post')) = 'group',
+  '「自分だけ」の記録をまとめてグループへ公開できる');
+select pg_temp.check(
+  (select visibility from public.activity_posts where id = pg_temp.uuid_val('selected_post')) = 'selected',
+  'まとめて公開しても「選んだ人」の記録には触れない');
+
+-- 後続の検査のために戻す
+reset role;
+update public.activity_posts
+set visibility = 'private', group_id = null
+where id = pg_temp.uuid_val('private_post');
+
+-- 論理削除。投稿者は自分で deleted_at を立てられ、他人からは見えなくなる。
 select set_config('request.jwt.claim.sub', :'alice', true);
 set local role authenticated;
 update public.activity_posts set deleted_at = now() where id = pg_temp.uuid_val('group_post');

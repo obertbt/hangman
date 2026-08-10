@@ -52,6 +52,36 @@ export async function listMyActivities({ limit = 30 }: { limit?: number } = {}):
   return (data ?? []).map(toListItem);
 }
 
+/**
+ * まだ誰にも見せていない記録の数。
+ *
+ * グループを作る前に記録すると、公開範囲は「自分だけ」になる。
+ * あとからグループに入っても、その記録は自動では共有されない
+ * （勝手に公開範囲を広げるべきではないため）。
+ * 気づけないまま「仲間から見えない」となるので、数だけ数えて画面で伝える。
+ */
+export async function countPrivateActivities(): Promise<number> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const { count, error } = await supabase
+    .from('activity_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('visibility', 'private')
+    .is('deleted_at', null);
+
+  if (error) {
+    console.error('countPrivateActivities failed', error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 export async function getActivityDetail(postId: string): Promise<ActivityDetail | null> {
   const supabase = await createClient();
   const {

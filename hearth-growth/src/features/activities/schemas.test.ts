@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createManualSchema,
   fromDurationSeconds,
+  sharePrivateActivitiesSchema,
   toDurationSeconds,
   updateActivitySchema,
   visibilityTargetSchema,
@@ -101,5 +102,21 @@ describe('toDurationSeconds / fromDurationSeconds', () => {
       const { hours, minutes } = fromDurationSeconds(seconds);
       expect(toDurationSeconds(hours, minutes)).toBe(seconds);
     }
+  });
+});
+
+describe('sharePrivateActivitiesSchema', () => {
+  const groupId = '00000000-0000-4000-8000-000000000001';
+
+  it('件数とグループがそろっていれば通る', () => {
+    expect(sharePrivateActivitiesSchema.safeParse({ groupId, expectedCount: 3 }).success).toBe(true);
+  });
+
+  it('0件では実行させない', () => {
+    expect(sharePrivateActivitiesSchema.safeParse({ groupId, expectedCount: 0 }).success).toBe(false);
+  });
+
+  it('公開先の指定が無ければ弾く', () => {
+    expect(sharePrivateActivitiesSchema.safeParse({ groupId: 'x', expectedCount: 3 }).success).toBe(false);
   });
 });

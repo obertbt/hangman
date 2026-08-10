@@ -72,6 +72,21 @@ export const updateActivitySchema = z
   })
   .and(visibilityTargetSchema);
 
+/**
+ * 「自分だけ」の記録をまとめてグループへ公開する。
+ *
+ * 公開範囲を広げる操作なので、対象は明示的に絞る。
+ * 動かすのは `private` のものだけで、`selected` には触れない
+ * （宛先を選んである記録を、本人の意図を越えて広げないため）。
+ */
+export const sharePrivateActivitiesSchema = z.object({
+  groupId: uuidSchema,
+  /** 画面に出した件数。こことずれていたら実行しない。 */
+  expectedCount: z.number().int().min(1).max(1000),
+});
+
+export type SharePrivateActivitiesInput = z.infer<typeof sharePrivateActivitiesSchema>;
+
 export type CreateFromSessionInput = z.infer<typeof createFromSessionSchema>;
 export type CreateManualInput = z.infer<typeof createManualSchema>;
 export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;

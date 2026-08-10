@@ -6,9 +6,11 @@ import { toActivityErrorMessage } from '@/features/activities/errors';
 import {
   createFromSessionSchema,
   createManualSchema,
+  sharePrivateActivitiesSchema,
   updateActivitySchema,
   type CreateFromSessionInput,
   type CreateManualInput,
+  type SharePrivateActivitiesInput,
   type UpdateActivityInput,
 } from '@/features/activities/schemas';
 import { fail, ok, type ActionResult } from '@/lib/actions/result';
@@ -113,4 +115,54 @@ export async function deleteActivityAction(postId: string): Promise<ActionResult
 
   revalidateActivityViews();
   return ok();
+}
+
+/**
+ * 「自分だけ」の記録を、まとめてグループへ公開する。
+ *
+ * グループを作る前に記録すると公開範囲は「自分だけ」になり、
+ * あとから参加しても自動では共有されない。
+ * それを手作業で1件ずつ直すのは現実的でないので、まとめて動かせるようにする。
+ *
+ * 公開範囲を広げる操作なので、次の3つで囲っておく。
+ *   * 動かすのは `private` のものだけ（`selected` の宛先指定は壊さない）
+ *   * 画面に出した件数と食い違ったら実行しない
+ *   * 所属していないグループへは公開できない（RLS の with check）
+ */
+export async function sharePrivateActivitiesAction(
+  input: SharePrivateActivitiesInput,
+): Promise<ActionResult<number>> {
+  const parsed = sharePrivateActivitiesSchema.safeParse(input);
+  if (!parsed.success) return firstIssue(parsed.error);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return fail('ログインの有効期限が切れました。もう一度ログインしてください。');
+
+  // 画面を出したあとに記録が増減していたら、意図しない件数を公開してしまう
+  const { count } = await supabase
+    .from('activity_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('visibility', 'private')
+    .is('deleted_at', null);
+
+  if ((count ?? 0) !== parsed.data.expectedCount) {
+    return fail('記録の数が変わりました。画面を開き直してから、もう一度お試しください。');
+  }
+
+  const { data, error } = await supabase
+    .from('activity_posts')
+    .update({ visibility: 'group', group_id: parsed.data.groupId })
+    .eq('user_id', user.id)
+    .eq('visibility', 'private')
+    .is('deleted_at', null)
+    .select('id');
+
+  if (error) return fail(toActivityErrorMessage(error));
+
+  revalidateActivityViews();
+  return ok(data?.length ?? 0);
 }
