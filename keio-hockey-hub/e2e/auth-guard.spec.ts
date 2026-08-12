@@ -20,6 +20,7 @@ const PROTECTED_PATHS = [
   '/feedback',
   '/skills',
   '/skills/applications',
+  '/measurements',
   '/notifications',
   '/admin/export',
   '/admin/storage',

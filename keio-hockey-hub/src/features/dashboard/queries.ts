@@ -13,6 +13,7 @@ import { countUnreadAnswers, countWaitingQuestions, listAwaitingCoach } from '@/
 import { isOverdue } from '@/features/feedback/lib/state';
 import { countAwaitingReview, countSentBack, getSkillOverview } from '@/features/skills/queries';
 import { countUnreadNotifications } from '@/features/ops/queries';
+import { countRecentBests } from '@/features/measurement/queries';
 import type { CategoryProgress } from '@/features/skills/lib/state';
 import type { EventRow, SeasonRow, WeekRow } from '@/types/database.types';
 
@@ -40,6 +41,8 @@ export interface PlayerDashboardData {
   skillProgress: CategoryProgress;
   /** まだ読んでいないお知らせ（57章）。 */
   unreadNotificationCount: number;
+  /** 直近の測定で自己ベストだった項目の数（3章の6）。 */
+  recentBestCount: number;
 }
 
 /** 選手向け「今日」（11章）。 */
@@ -97,12 +100,14 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
     sentBackSkillCount,
     skillOverview,
     unreadNotificationCount,
+    recentBestCount,
   ] = await Promise.all([
     countUnreadAnswers(session),
     countWaitingQuestions(session),
     countSentBack(session),
     getSkillOverview(session),
     countUnreadNotifications(session),
+    countRecentBests(session),
   ]);
 
   const todayState: TodayState = {
@@ -132,6 +137,7 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
     personalGoal: goalRow?.goal ?? null,
     skillProgress: skillOverview.total,
     unreadNotificationCount,
+    recentBestCount,
   };
 }
 

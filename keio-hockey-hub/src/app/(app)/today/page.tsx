@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AlertTriangle, Award, Bell, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
+import { AlertTriangle, Award, Bell, CalendarDays, Check, ChevronRight, Ruler, Target } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -93,6 +93,20 @@ async function PlayerToday() {
           <RecordLink href="/training" label="トレーニング" done={data.todayState.hasTraining} />
         </ul>
       </Card>
+
+      {/* 3章の6: 自己ベストは、続けてきたことがいちばん分かりやすく形になったもの */}
+      {data.recentBestCount > 0 ? (
+        <Link
+          href="/measurements"
+          className="flex min-h-12 items-center justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-950/40"
+        >
+          <span className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+            <Ruler size={16} aria-hidden />
+            直近の測定で {data.recentBestCount} 項目が自己ベストです
+          </span>
+          <ChevronRight size={16} className="text-[--color-muted]" aria-hidden />
+        </Link>
+      ) : null}
 
       {/* 31章: 積み上がったものが見えることが、続ける支えになる */}
       <Card>

@@ -667,6 +667,43 @@ export type NotificationTargetRow = {
   created_at: string;
 };
 
+export type MeasurementEventRow = {
+  id: string;
+  team_id: string;
+  season_id: string | null;
+  event_id: string | null;
+  name: string;
+  measured_on: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type MeasurementItemRow = {
+  id: string;
+  team_id: string;
+  name: string;
+  unit: string | null;
+  /** 値が大きいほど良いのか小さいほど良いのか。 */
+  better: 'higher' | 'lower';
+  sort_order: number;
+  created_at: string;
+};
+
+export type MeasurementResultRow = {
+  id: string;
+  team_id: string;
+  measurement_event_id: string;
+  measurement_item_id: string;
+  team_member_id: string;
+  value: number | null;
+  text_value: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type StorageUsageSnapshotRow = {
   id: string;
   team_id: string;
@@ -840,6 +877,21 @@ export type Database = {
       >;
       notification_targets: TableShape<NotificationTargetRow, 'id' | 'read_at' | 'created_at'>;
       audit_logs: TableShape<AuditLogRow, Exclude<keyof AuditLogRow, 'action'>>;
+      measurement_events: TableShape<
+        MeasurementEventRow,
+        Exclude<keyof MeasurementEventRow, 'team_id' | 'name' | 'measured_on'>
+      >;
+      measurement_items: TableShape<
+        MeasurementItemRow,
+        Exclude<keyof MeasurementItemRow, 'team_id' | 'name'>
+      >;
+      measurement_results: TableShape<
+        MeasurementResultRow,
+        Exclude<
+          keyof MeasurementResultRow,
+          'team_id' | 'measurement_event_id' | 'measurement_item_id' | 'team_member_id'
+        >
+      >;
       storage_usage_snapshots: TableShape<
         StorageUsageSnapshotRow,
         Exclude<keyof StorageUsageSnapshotRow, 'team_id' | 'captured_on'>

@@ -23,7 +23,7 @@ import { flattenText, protectFromSpreadsheet, toCsv, type CsvColumn } from './li
  * 出したものは Import Center で読み直せる形にしておく（37章）。
  */
 
-export const EXPORT_TYPES = ['members', 'reports', 'training', 'skills'] as const;
+export const EXPORT_TYPES = ['members', 'reports', 'training', 'skills', 'measurements'] as const;
 export type ExportType = (typeof EXPORT_TYPES)[number];
 
 export const EXPORT_LABELS: Record<ExportType, string> = {
@@ -31,6 +31,7 @@ export const EXPORT_LABELS: Record<ExportType, string> = {
   reports: '日報',
   training: 'トレーニング記録',
   skills: 'スキルの到達状況',
+  measurements: '測定の記録',
 };
 
 export const EXPORT_DESCRIPTIONS: Record<ExportType, string> = {
@@ -38,6 +39,7 @@ export const EXPORT_DESCRIPTIONS: Record<ExportType, string> = {
   reports: '提出済みの日報。自分の見える範囲だけが出ます',
   training: 'トレーニングの記録。自分の見える範囲だけが出ます',
   skills: '誰がどのスキルまで届いているか',
+  measurements: '測定会ごとの記録。自分の見える範囲だけが出ます',
 };
 
 export function isExportType(value: string): value is ExportType {
@@ -59,6 +61,8 @@ export async function buildExportCsv(session: AppSession, type: ExportType): Pro
       return exportTraining(session);
     case 'skills':
       return exportSkills(session);
+    case 'measurements':
+      return exportMeasurements(session);
   }
 }
 
@@ -238,6 +242,49 @@ async function exportSkills(session: AppSession): Promise<string> {
     { header: 'スキル', value: (row) => text(skillById.get(row.skill_id)?.name ?? '不明') },
     { header: '状態', value: (row) => SKILL_STATUS_LABELS[row.status] },
     { header: '承認日時', value: (row) => row.approved_at ?? '' },
+    { header: 'メモ', value: (row) => text(row.note) },
+  ];
+
+  return toCsv(rows, columns);
+}
+
+/**
+ * 測定の記録（3章の6）。
+ *
+ * 1行が「誰の・いつの・どの項目の・いくつ」。
+ * 表計算に貼ってそのままグラフにできる形にする。
+ */
+async function exportMeasurements(session: AppSession): Promise<string> {
+  const supabase = await createClient();
+
+  const [resultQuery, eventQuery, itemQuery, names] = await Promise.all([
+    supabase
+      .from('measurement_results')
+      .select('*')
+      .eq('team_id', session.teamId)
+      .order('created_at', { ascending: false })
+      .limit(5000),
+    supabase.from('measurement_events').select('id, name, measured_on').eq('team_id', session.teamId),
+    supabase.from('measurement_items').select('id, name, unit, better').eq('team_id', session.teamId),
+    memberNames(session),
+  ]);
+
+  const eventById = new Map((eventQuery.data ?? []).map((event) => [event.id, event]));
+  const itemById = new Map((itemQuery.data ?? []).map((item) => [item.id, item]));
+  const rows = resultQuery.data ?? [];
+
+  const columns: CsvColumn<(typeof rows)[number]>[] = [
+    { header: '実施日', value: (row) => eventById.get(row.measurement_event_id)?.measured_on ?? '' },
+    { header: '測定会', value: (row) => text(eventById.get(row.measurement_event_id)?.name) },
+    { header: '氏名', value: (row) => text(names.get(row.team_member_id) ?? '不明') },
+    { header: '項目', value: (row) => text(itemById.get(row.measurement_item_id)?.name) },
+    { header: '値', value: (row) => row.value },
+    { header: '単位', value: (row) => itemById.get(row.measurement_item_id)?.unit ?? '' },
+    {
+      header: '良い方向',
+      value: (row) =>
+        itemById.get(row.measurement_item_id)?.better === 'lower' ? '小さいほど良い' : '大きいほど良い',
+    },
     { header: 'メモ', value: (row) => text(row.note) },
   ];
 
