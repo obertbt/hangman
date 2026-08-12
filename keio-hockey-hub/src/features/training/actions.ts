@@ -188,16 +188,19 @@ function asString(value: FormDataEntryValue | undefined): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** 記録の取り消し。論理削除にする（60章: 記録は簡単に消さない）。 */
+/**
+ * 記録の取り消し。論理削除にする（60章: 記録は簡単に消さない）。
+ *
+ * 素朴な `update ... set deleted_at` では消せない。
+ * 閲覧できる条件が `deleted_at is null` なので、
+ * 更新後の行が見えなくなり弾かれる（0019。0013 の動画と同じ形）。
+ * 「自分のものだけ」の判定は関数の中で行う。
+ */
 export async function deleteTrainingRecord(recordId: string): Promise<TrainingActionState> {
-  const session = await requireSession();
+  await requireSession();
   const supabase = await createClient();
 
-  const { error } = await supabase
-    .from('training_records')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', recordId)
-    .eq('team_member_id', session.teamMemberId); // 自分のものだけ
+  const { error } = await supabase.rpc('soft_delete_training_record', { p_record_id: recordId });
 
   if (error) return { error: `削除できませんでした: ${error.message}` };
 

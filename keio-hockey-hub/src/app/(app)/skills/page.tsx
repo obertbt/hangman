@@ -53,9 +53,19 @@ export default async function SkillsPage() {
           title="いまの到達度"
           description="小目標のうち、承認されたものの割合です。"
           action={
-            <Link href="/skills/applications" className="text-keio-700 dark:text-keio-300 text-sm underline">
-              申請の状況
-            </Link>
+            <span className="flex gap-3">
+              <Link
+                href="/skills/applications"
+                className="text-keio-700 dark:text-keio-300 text-sm underline"
+              >
+                申請の状況
+              </Link>
+              {canReview ? (
+                <Link href="/admin/skills" className="text-keio-700 dark:text-keio-300 text-sm underline">
+                  定義
+                </Link>
+              ) : null}
+            </span>
           }
         />
         <ProgressBar
@@ -72,7 +82,14 @@ export default async function SkillsPage() {
       {overview.categories.length === 0 ? (
         <Card>
           <EmptyState>
-            スキルがまだ登録されていません。コーチが大分類と目標を登録すると、ここに出ます。
+            スキルがまだ登録されていません。
+            {canReview ? (
+              <Link href="/admin/skills" className="ml-1 underline">
+                スキル定義から登録する
+              </Link>
+            ) : (
+              'コーチが大分類と目標を登録すると、ここに出ます。'
+            )}
           </EmptyState>
         </Card>
       ) : (

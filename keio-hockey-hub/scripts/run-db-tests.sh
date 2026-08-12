@@ -96,6 +96,7 @@ run_test "フィードバックの一周のテスト" supabase/tests/feedback_te
 run_test "スキルの申請と承認のテスト" supabase/tests/skill_test.sql
 run_test "容量・掃除・監査ログ・通知のテスト" supabase/tests/ops_test.sql
 run_test "測定のテスト" supabase/tests/measurement_test.sql
+run_test "役割と権限のテスト" supabase/tests/role_test.sql
 
 echo
 if [[ "$FAILED" != "0" ]]; then

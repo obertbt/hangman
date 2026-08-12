@@ -30,6 +30,7 @@ Notion や Google スプレッドシートで分かれている運営を1つに�
 | Phase 8 | スキル階層・申請・根拠の添付・コーチの審査・承認履歴           | ✅ 完了 |
 | Phase 9 | お知らせ一覧・保存容量の集計と掃除・操作の記録・CSV 書き出し   | ✅ 完了 |
 | 追加    | 測定の記録と推移（自己ベスト・前回比・折れ線）                 | ✅ 完了 |
+| 追加    | スキル定義の管理・役割と権限の変更（SQL 不要で運用できる）     | ✅ 完了 |
 
 進め方の詳細は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)、
 細かい作業一覧は [TASKS.md](TASKS.md) にあります。
@@ -153,6 +154,8 @@ Supabase の SQL Editor で、`supabase/migrations/` の中を **番号順に** 
 0015_notification_insert.sql         通知を作れるようにする（ポリシーが無かった）
 0016_storage_ops.sql                 容量の集計と掃除（関数を通す）
 0017_measurement_guards.sql          測定の参照先チェックと、自分の記録の入力
+0018_role_guards.sql                 役割を自分で上げられないようにする
+0019_soft_delete_visibility.sql      消した記録が消した人からも見えないようにする
 ```
 
 Supabase CLI が使える場合は次でも構いません。
@@ -162,6 +165,9 @@ pnpm db:reset   # migration → seed をまとめて流す
 ```
 
 開発用のサンプルデータが要るときは `supabase/seed.sql` も実行します。
+
+> 2人目以降のコーチや管理者は、**画面から設定できます**（名簿 → 設定）。
+> SQL が要るのは最初の1人だけです。
 
 ### 4. 最初の管理者を作る
 

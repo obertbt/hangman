@@ -983,6 +983,13 @@ export type Database = {
         Returns: undefined;
       };
       expire_stale_uploads: { Args: { p_team_id: string }; Returns: number };
+      /** 論理削除は関数を通す（0019）。for all のポリシーを締めた副作用。 */
+      soft_delete_training_record: { Args: { p_record_id: string }; Returns: undefined };
+      soft_delete_skill: { Args: { p_skill_id: string }; Returns: undefined };
+      next_skill_sort_order: {
+        Args: { p_team_id: string; p_category_id: string; p_parent_id: string | null };
+        Returns: number;
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

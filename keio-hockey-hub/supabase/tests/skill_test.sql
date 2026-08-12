@@ -391,5 +391,88 @@ select pg_temp.check('別チームからは申請が見えない',
 select pg_temp.check('別チームからはスキル定義も見えない',
   (select count(*) from public.skills where team_id = 'b2b20000-0000-0000-0000-00000000000a'), 0);
 
+-- -------------------------------------------------------------
+-- 10. スキル定義の管理（30章）
+--
+-- 画面から大分類と目標を作れないと、Phase 8 を使い始められない。
+-- -------------------------------------------------------------
+select pg_temp.login('a2a20000-0000-0000-0000-000000000003');  -- コーチ
+
+insert into public.skill_categories (id, team_id, name, sort_order)
+values ('44550000-0000-0000-0000-000000000001', 'b2b20000-0000-0000-0000-00000000000a', 'トラップ', 2);
+
+select pg_temp.check('コーチは大分類を作れる',
+  (select count(*) from public.skill_categories), 2);
+
+insert into public.skills (id, team_id, skill_category_id, parent_id, name, level, sort_order)
+values ('55660000-0000-0000-0000-000000000001', 'b2b20000-0000-0000-0000-00000000000a',
+        '44550000-0000-0000-0000-000000000001', null, '止める', 2, 1);
+
+insert into public.skills (id, team_id, skill_category_id, parent_id, name, level, sort_order)
+values ('55660000-0000-0000-0000-000000000002', 'b2b20000-0000-0000-0000-00000000000a',
+        '44550000-0000-0000-0000-000000000001', '55660000-0000-0000-0000-000000000001',
+        '浮き球を1回で止める', 3, 1);
+
+select pg_temp.check('中目標と小目標を作れる',
+  (select count(*) from public.skills
+   where skill_category_id = '44550000-0000-0000-0000-000000000001'), 2);
+
+-- 並び順を数える関数（0018）
+select pg_temp.check('次の並び順は末尾になる',
+  app.next_skill_sort_order('b2b20000-0000-0000-0000-00000000000a',
+                            '44550000-0000-0000-0000-000000000001',
+                            '55660000-0000-0000-0000-000000000001'), 2);
+
+-- 誰も到達していない目標は消せる。
+--
+-- ここは 0019 で直した形の確認でもある。
+-- `for all` のポリシーは SELECT にも効くので、
+-- そこに deleted_at の条件が無いと「消したのに見えたまま」になる。
+select public.soft_delete_skill('55660000-0000-0000-0000-000000000002');
+
+select pg_temp.check('到達者のいない目標は消せる',
+  (select count(*) from public.skills
+   where skill_category_id = '44550000-0000-0000-0000-000000000001'), 1);
+
+-- 消した本人（コーチ）からも見えない
+select pg_temp.check('消した目標はコーチからも見えない',
+  (select count(*) from public.skills
+   where id = '55660000-0000-0000-0000-000000000002'), 0);
+
+-- 到達者のいる目標は消せない（積み上げを消さない）
+do $$
+begin
+  begin
+    perform public.soft_delete_skill('f2f20000-0000-0000-0000-00000000000a');
+    raise exception 'NG: 申請のある目標を消せてしまった';
+  exception when raise_exception then
+    if sqlerrm like 'NG:%' then raise; end if;
+    raise notice 'ok: 申請のある目標は消せない（%）', sqlerrm;
+  end;
+end;
+$$;
+
+-- 選手は定義を触れない
+select pg_temp.login('a2a20000-0000-0000-0000-000000000001');  -- 選手
+
+do $$
+begin
+  begin
+    insert into public.skill_categories (team_id, name)
+    values ('b2b20000-0000-0000-0000-00000000000a', '勝手な大分類');
+    raise exception 'NG: 選手が大分類を作れてしまった';
+  exception
+    when insufficient_privilege then
+      raise notice 'ok: 選手は大分類を作れない（RLS）';
+    when raise_exception then
+      if sqlerrm like 'NG:%' then raise; end if;
+      raise notice 'ok: 選手は大分類を作れない（%）', sqlerrm;
+  end;
+end;
+$$;
+
+select pg_temp.check('選手にも定義は見える（申請するため）',
+  (select count(*) from public.skill_categories), 2);
+
 reset role;
 rollback;

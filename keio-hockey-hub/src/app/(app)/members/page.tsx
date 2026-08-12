@@ -17,6 +17,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
 
   const members = await listMembers(session.teamId, includeInactive);
   const canImport = can(session, 'import.execute');
+  const isAdmin = session.role === 'system_admin';
 
   return (
     <div className="space-y-4">
@@ -81,6 +82,16 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
                 </div>
 
                 {!member.hasLogin ? <Badge tone="warning">未ログイン</Badge> : null}
+
+                {/* 役割と権限を変えられるのは管理者だけ（13章） */}
+                {isAdmin ? (
+                  <Link
+                    href={`/members/${member.teamMemberId}`}
+                    className="text-keio-700 dark:text-keio-300 shrink-0 text-sm underline"
+                  >
+                    設定
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -90,6 +101,12 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
       <p className="text-xs text-[--color-muted]">
         「未ログイン」は、移行で登録したがまだアカウントを作っていない選手です。
       </p>
+
+      {isAdmin ? (
+        <p className="text-xs text-[--color-muted]">
+          「設定」から役割と権限を変えられます。変更は操作の記録に残ります。
+        </p>
+      ) : null}
     </div>
   );
 }
