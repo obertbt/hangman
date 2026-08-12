@@ -250,6 +250,17 @@ export type PracticeGoalRow = {
   deleted_at: string | null;
 };
 
+export type ReportFeedbackRow = {
+  id: string;
+  team_id: string;
+  daily_report_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 export type TrainingRecordRow = {
   id: string;
   team_id: string;
@@ -844,6 +855,10 @@ export type Database = {
         PracticeGoalRow,
         Exclude<keyof PracticeGoalRow, 'team_id' | 'team_member_id' | 'target_date' | 'goal'>
       >;
+      report_feedbacks: TableShape<
+        ReportFeedbackRow,
+        Exclude<keyof ReportFeedbackRow, 'team_id' | 'daily_report_id' | 'author_id' | 'body'>
+      >;
       training_records: TableShape<
         TrainingRecordRow,
         Exclude<keyof TrainingRecordRow, 'team_id' | 'team_member_id' | 'performed_on' | 'training_type'>
@@ -987,6 +1002,7 @@ export type Database = {
       /** 論理削除は関数を通す（0019）。for all のポリシーを締めた副作用。 */
       soft_delete_training_record: { Args: { p_record_id: string }; Returns: undefined };
       soft_delete_skill: { Args: { p_skill_id: string }; Returns: undefined };
+      soft_delete_report_feedback: { Args: { p_feedback_id: string }; Returns: undefined };
       /** 消したものの一覧と復元（0020）。通常の SELECT では引けないため。 */
       list_deleted_items: {
         Args: { p_team_id: string };

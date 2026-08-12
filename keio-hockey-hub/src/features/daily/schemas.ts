@@ -97,6 +97,24 @@ export const dailyReportSchema = z.object({
 
 export type DailyReportInput = z.infer<typeof dailyReportSchema>;
 
+// -------------------------------------------------------------
+// 日報へのコーチのコメント（16章）
+// -------------------------------------------------------------
+/**
+ * コメントは短くてもいい。ひとことでも返ってくることに意味がある。
+ * ただし空では出せない。空のコメントは選手には「無言の既読」に見える。
+ */
+export const reportCommentSchema = z.object({
+  daily_report_id: z.guid('対象の日報が分かりません。'),
+  body: z
+    .string()
+    .trim()
+    .min(1, 'ひとことでいいので書いてください。')
+    .max(2000, '長すぎます（2000文字まで）'),
+});
+
+export type ReportCommentInput = z.infer<typeof reportCommentSchema>;
+
 /**
  * 提出するには最低限の中身が要る。
  * 空の日報を「提出済み」にしても、コーチにも本人にも意味がない。

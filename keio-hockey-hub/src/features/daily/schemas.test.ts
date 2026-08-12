@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { conditionSchema, dailyReportSchema, hasEnoughToSubmit, practiceGoalSchema } from './schemas';
+import {
+  conditionSchema,
+  dailyReportSchema,
+  hasEnoughToSubmit,
+  practiceGoalSchema,
+  reportCommentSchema,
+} from './schemas';
 
 describe('練習前コンディション（15章）', () => {
   const base = {
@@ -141,5 +147,37 @@ describe('提出できるかどうか', () => {
 
   it('目標だけでは提出させない（振り返りが無い）', () => {
     expect(hasEnoughToSubmit({ ...empty, personal_goal: '前を向く' })).toBe(false);
+  });
+});
+
+describe('日報へのコメント（16章）', () => {
+  const reportId = '11111111-1111-1111-1111-111111111111';
+
+  it('ひとことでも通る', () => {
+    const parsed = reportCommentSchema.safeParse({ daily_report_id: reportId, body: 'いいね' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('前後の空白は落とす', () => {
+    const parsed = reportCommentSchema.parse({ daily_report_id: reportId, body: '  よかった  ' });
+    expect(parsed.body).toBe('よかった');
+  });
+
+  it('空では出せない（無言の既読に見えてしまう）', () => {
+    expect(reportCommentSchema.safeParse({ daily_report_id: reportId, body: '' }).success).toBe(false);
+    expect(reportCommentSchema.safeParse({ daily_report_id: reportId, body: '   ' }).success).toBe(false);
+  });
+
+  it('長すぎるものは断る', () => {
+    const parsed = reportCommentSchema.safeParse({
+      daily_report_id: reportId,
+      body: 'あ'.repeat(2001),
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('対象の日報が UUID でなければ断る', () => {
+    expect(reportCommentSchema.safeParse({ daily_report_id: 'abc', body: 'いいね' }).success).toBe(false);
+    expect(reportCommentSchema.safeParse({ daily_report_id: '', body: 'いいね' }).success).toBe(false);
   });
 });

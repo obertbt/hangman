@@ -6,25 +6,26 @@
 
 ## 1. 守ると決めたこと（62章）
 
-| 守ること                               | どう守るか                           | 確認方法              |
-| -------------------------------------- | ------------------------------------ | --------------------- |
-| 他選手の非公開日報を見られない         | RLS `daily_reports_*`                | `rls_test.sql`        |
-| 他選手の非公開動画を見られない         | RLS `files_select` / `videos_select` | 同上                  |
-| 他選手のフィードバック依頼を見られない | RLS `feedback_requests_select`       | 同上                  |
-| 別チームの情報を見られない             | 全テーブルの `app.is_team_member()`  | `rls_test.sql`        |
-| 別チームの R2 URL を発行できない       | `isKeyOwnedByTeam()` + RLS           | `storage.test.ts`     |
-| URL 直打ちでも回避できない             | RLS はクエリ単位で効く               | `auth-guard.spec.ts`  |
-| 選手が管理画面を見られない             | `requirePermission()` + RLS          | `rls_test.sql`        |
-| 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに  | ポリシー定義          |
-| 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる   | `upload_test.sql`     |
-| 他人の動画を消せない                   | `soft_delete_video` の中で権限確認   | `upload_test.sql`     |
-| 自分でスキルを承認できない             | `app.validate_player_skill()` トリガ | `skill_test.sql`      |
-| 他人の名前で通知を送れない             | RLS `notifications_insert`           | `skill_test.sql`      |
-| 自分の役割を上げられない               | `app.guard_member_role()` トリガ     | `role_test.sql`       |
-| 最後の管理者を締め出せない             | 同上                                 | `role_test.sql`       |
-| 消した記録が消した人からも見えない     | `for all` にも `deleted_at is null`  | `skill_test.sql`      |
-| 招待リンクが DB から作れない           | 生の値を残さず sha256 だけ           | `invitation_test.sql` |
-| 招待で役割を上げられない               | `app.guard_invitation()` トリガ      | `invitation_test.sql` |
+| 守ること                               | どう守るか                            | 確認方法                   |
+| -------------------------------------- | ------------------------------------- | -------------------------- |
+| 他選手の非公開日報を見られない         | RLS `daily_reports_*`                 | `rls_test.sql`             |
+| 他選手の非公開動画を見られない         | RLS `files_select` / `videos_select`  | 同上                       |
+| 他選手のフィードバック依頼を見られない | RLS `feedback_requests_select`        | 同上                       |
+| 別チームの情報を見られない             | 全テーブルの `app.is_team_member()`   | `rls_test.sql`             |
+| 別チームの R2 URL を発行できない       | `isKeyOwnedByTeam()` + RLS            | `storage.test.ts`          |
+| URL 直打ちでも回避できない             | RLS はクエリ単位で効く                | `auth-guard.spec.ts`       |
+| 選手が管理画面を見られない             | `requirePermission()` + RLS           | `rls_test.sql`             |
+| 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに   | ポリシー定義               |
+| 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる    | `upload_test.sql`          |
+| 他人の動画を消せない                   | `soft_delete_video` の中で権限確認    | `upload_test.sql`          |
+| 自分でスキルを承認できない             | `app.validate_player_skill()` トリガ  | `skill_test.sql`           |
+| 他人の名前で通知を送れない             | RLS `notifications_insert`            | `skill_test.sql`           |
+| 自分の役割を上げられない               | `app.guard_member_role()` トリガ      | `role_test.sql`            |
+| 最後の管理者を締め出せない             | 同上                                  | `role_test.sql`            |
+| 消した記録が消した人からも見えない     | `for all` にも `deleted_at is null`   | `skill_test.sql`           |
+| 招待リンクが DB から作れない           | 生の値を残さず sha256 だけ            | `invitation_test.sql`      |
+| 招待で役割を上げられない               | `app.guard_invitation()` トリガ       | `invitation_test.sql`      |
+| 「自分だけ」の日報にコメントできない   | `app.can_see_report()` を両ポリシーに | `report_feedback_test.sql` |
 
 ## 2. 二重に守る
 
@@ -488,7 +489,76 @@ RLS は「チームの一員かどうか」で守っているので、
 **トークンのハッシュを知っている人にだけ**答えます。
 招待の表そのものは、`anon` から読めません（権限ごと無い）。
 
-## 15. 書き出し（Phase 9）
+## 15. 日報のコメントが公開範囲を見ていなかった（実際に見つかった穴）
+
+`report_feedbacks` のポリシーは、こうなっていました。
+
+```sql
+-- 読む
+using (app.is_own_member(...) or app.has_permission(team_id, 'report.view_all'))
+-- 書く
+using (app.has_permission(team_id, 'report.view_all'))
+```
+
+日報側（`daily_reports_select`）は `visibility in ('staff','team')` を見ているのに、
+**コメント側は権限だけで判定していました。**
+
+その結果、選手が公開範囲を「自分だけ」にした日報にも、
+コーチはコメントを書けてしまいます。書かれれば、選手にはそれが見えます。
+
+選手が `private` を選ぶのは「コーチにも見せたくない」という意思表示なので、
+そこにコメントが付くのは、いちばんあってはならない壊れ方です。
+
+### なぜ起きたか
+
+9章（動画）とまったく同じ形です。
+**権限（全員の日報を見てよいか）と公開範囲（その日報が誰に向いているか）を、
+別のものとして扱わなかった。**
+
+同じ間違いを、別のテーブルで繰り返しました。
+テーブルごとに条件を手で書き写している限り、これは何度でも起きます。
+
+### 対処（0022_report_feedback.sql）
+
+「その日報が見えるか」を1つの関数にまとめ、読みと書きの両方から呼びます。
+
+```sql
+create function app.can_see_report(p_report_id uuid) returns boolean
+  security definer as $$
+  select exists (
+    select 1 from public.daily_reports r
+    where r.id = p_report_id and r.deleted_at is null
+      and (
+        app.is_own_member(r.team_member_id)
+        or (r.visibility in ('staff','team') and app.has_permission(r.team_id,'report.view_all'))
+        or (r.visibility = 'team' and app.is_team_member(r.team_id))
+      )
+  );
+$$;
+```
+
+書き込み側では、差出人も固定します（10章と同じ）。
+
+```sql
+with check (
+  app.has_permission(team_id, 'report.view_all')
+  and app.can_see_report(daily_report_id)
+  and author_id = app.current_profile_id()
+)
+```
+
+これで、選手が後から公開範囲を狭めれば、
+**すでに書かれたコメントも一緒に見えなくなります**（テストで確認済み）。
+
+### 教訓
+
+**親のポリシーを写した子のポリシーは、親が変わったときに置き去りになる。**
+条件を書き写すのではなく、関数にして両方から呼ぶこと。
+
+`can_see_report()` は `daily_reports` のポリシーと同じ規則です。
+片方を直したらもう片方も直す、と関数のコメントに書いてあります。
+
+## 16. 書き出し（Phase 9）
 
 記録は CSV で取り出せます（3章の12: 過去の資産を失わない）。
 
@@ -515,7 +585,7 @@ CSV は「相手のアプリがどう解釈するか」まで含めて設計し�
 ファイル名に氏名は入れません（storage key と同じ考え方）。
 共有端末のダウンロードフォルダに個人名が残らないようにするためです。
 
-## 16. 確認のしかた
+## 17. 確認のしかた
 
 ```bash
 pnpm db:test    # RLS と制約

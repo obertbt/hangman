@@ -313,6 +313,16 @@ async function CoachToday() {
             <p className="text-sm text-[--color-muted]">{data.missingReportNames.join('、')}</p>
           </>
         )}
+
+        {/* 16章: 出ているのに誰も読んでいない、が一番こたえる */}
+        {data.uncommentedReportCount > 0 ? (
+          <p className="mt-3 border-t border-[--color-border] pt-3 text-sm">
+            まだコメントしていない日報が {data.uncommentedReportCount} 件あります。
+            <Link href="/admin/submissions" className="text-keio-700 dark:text-keio-300 ml-1 underline">
+              ひとこと返す
+            </Link>
+          </p>
+        ) : null}
       </Card>
 
       {data.week ? (

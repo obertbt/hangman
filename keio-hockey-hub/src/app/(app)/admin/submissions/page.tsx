@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Check, Minus } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
+import { listReportsAwaitingComment } from '@/features/daily/feedback-queries';
 import { getSubmissionStatus } from '@/features/daily/queries';
 import { listEventsOnDate } from '@/features/timeline/queries';
 import { requirePermission } from '@/lib/auth/session';
@@ -27,10 +29,14 @@ export default async function SubmissionsPage({
   // 日付は 'YYYY-MM-DD' の形だけを受ける
   const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayInTokyo();
 
-  const [rows, events] = await Promise.all([
+  const [rows, events, submitted] = await Promise.all([
     getSubmissionStatus(session.teamId, date),
     listEventsOnDate(session.teamId, date),
+    listReportsAwaitingComment(session, date),
   ]);
+
+  // まだ誰も返していないものを上に。返事の抜けを減らす（依頼書3章の4）
+  const reports = [...submitted].sort((left, right) => left.commentCount - right.commentCount);
 
   const missingCondition = rows.filter((row) => !row.hasCondition);
   const missingReport = rows.filter((row) => !row.hasReport);
@@ -79,6 +85,42 @@ export default async function SubmissionsPage({
         <SummaryCell label="日報未提出" value={missingReport.length} total={rows.length} />
         <SummaryCell label="トレーニング未入力" value={missingTraining.length} total={rows.length} />
       </div>
+
+      <Card>
+        <CardHeader
+          title="この日の日報"
+          description="まだコメントしていないものを上に並べています。ひとことでも返すと次につながります。"
+        />
+        {reports.length === 0 ? (
+          <EmptyState>読める日報はまだありません。</EmptyState>
+        ) : (
+          <ul className="divide-y divide-[--color-border]">
+            {reports.map((entry) => (
+              <li key={entry.report.id} className="py-3">
+                <Link href={`/report/${entry.report.id}`} className="block">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <span className="text-keio-700 dark:text-keio-300 underline">{entry.authorName}</span>
+                    {entry.commentCount === 0 ? (
+                      <Badge tone="warning">未コメント</Badge>
+                    ) : (
+                      <Badge tone="success">コメント{entry.commentCount}件</Badge>
+                    )}
+                  </p>
+                  {entry.report.what_went_wrong ? (
+                    <p className="mt-1 line-clamp-2 text-sm text-[--color-muted]">
+                      できなかったこと: {entry.report.what_went_wrong}
+                    </p>
+                  ) : entry.report.what_went_well ? (
+                    <p className="mt-1 line-clamp-2 text-sm text-[--color-muted]">
+                      できたこと: {entry.report.what_went_well}
+                    </p>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card>
         <CardHeader title="選手ごとの状況" description="出していない人を上に並べています" />
