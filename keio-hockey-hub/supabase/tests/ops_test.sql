@@ -201,6 +201,33 @@ select pg_temp.check('失敗したファイルには印を付けない',
 set local role authenticated;
 
 -- -------------------------------------------------------------
+-- 3b. アプリから消した動画も「削除待ち」に数える
+--
+-- soft_delete_video が upload_status まで 'deleted' にしていたため、
+-- 実体はまだ R2 にあるのに集計から外れていた（0020 で直した）。
+-- 手で deleted_at を入れるのではなく、実際の削除経路で確かめる。
+-- -------------------------------------------------------------
+insert into public.files
+  (id, team_id, uploaded_by, storage_provider, bucket, storage_key, mime_type, size_bytes,
+   media_type, upload_status, visibility)
+values ('e3e30000-0000-0000-0000-000000000009', 'b3b30000-0000-0000-0000-00000000000a',
+        'c3c30000-0000-0000-0000-000000000002', 'r2', 'b',
+        'teams/b3b30000-0000-0000-0000-00000000000a/videos/2026/08/12/zzz.mp4',
+        'video/mp4', 52428800, 'video', 'ready', 'private_staff');
+
+insert into public.videos (id, team_id, provider, file_id, title, visibility, created_by)
+values ('09090000-0000-0000-0000-000000000001', 'b3b30000-0000-0000-0000-00000000000a',
+        'r2', 'e3e30000-0000-0000-0000-000000000009', '消す動画', 'private_staff',
+        'c3c30000-0000-0000-0000-000000000002');
+
+select public.soft_delete_video('09090000-0000-0000-0000-000000000001');
+select public.capture_storage_usage('b3b30000-0000-0000-0000-00000000000a');
+
+select pg_temp.check('アプリから消した動画も削除待ちに数える',
+  (select deleted_bytes from public.storage_usage_snapshots
+   where team_id = 'b3b30000-0000-0000-0000-00000000000a'), 52428800);
+
+-- -------------------------------------------------------------
 -- 4. 途中でやめたアップロードの片付け（21章）
 -- -------------------------------------------------------------
 select pg_temp.check('期限切れのセッションを片付ける',
@@ -229,8 +256,9 @@ select pg_temp.check('選手には監査ログが見えない',
   (select count(*) from public.audit_logs), 0);
 
 select pg_temp.login('a3a30000-0000-0000-0000-000000000002');  -- 管理者
+-- file.hard_delete と video.delete の2件
 select pg_temp.check('管理者には監査ログが見える',
-  (select count(*) from public.audit_logs), 1);
+  (select count(*) from public.audit_logs), 2);
 
 do $$
 begin

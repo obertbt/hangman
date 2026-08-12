@@ -342,5 +342,5 @@ export async function deleteVideo(videoId: string): Promise<{ error?: string; su
   }
 
   revalidatePath('/videos');
-  return { success: '動画を削除しました。30日後に実体も消えます。' };
+  return { success: '動画を削除しました。30日以内なら「消したもの」から戻せます。' };
 }

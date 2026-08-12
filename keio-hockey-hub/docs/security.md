@@ -112,6 +112,7 @@ function safeNextPath(next: FormDataEntryValue | null): string {
 | 動画アップロード / 公開範囲変更 / 共有承認    | ⬜ 未実装   |
 | フィードバック回答                            | ⬜ 未実装   |
 | R2 の物理削除（`complete_file_deletion`）     | ✅ 実装済み |
+| 動画・スキル定義の復元                        | ✅ 実装済み |
 | 容量設定の変更                                | ⬜ 未実装   |
 
 **秘密鍵や署名付き URL そのものはログに残しません。**

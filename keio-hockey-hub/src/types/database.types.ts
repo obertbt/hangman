@@ -986,6 +986,22 @@ export type Database = {
       /** 論理削除は関数を通す（0019）。for all のポリシーを締めた副作用。 */
       soft_delete_training_record: { Args: { p_record_id: string }; Returns: undefined };
       soft_delete_skill: { Args: { p_skill_id: string }; Returns: undefined };
+      /** 消したものの一覧と復元（0020）。通常の SELECT では引けないため。 */
+      list_deleted_items: {
+        Args: { p_team_id: string };
+        Returns: {
+          kind: string;
+          item_id: string;
+          label: string;
+          deleted_at: string;
+          restorable: boolean;
+          note: string | null;
+        }[];
+      };
+      restore_video: { Args: { p_video_id: string }; Returns: undefined };
+      restore_video_clip: { Args: { p_clip_id: string }; Returns: undefined };
+      restore_training_record: { Args: { p_record_id: string }; Returns: undefined };
+      restore_skill: { Args: { p_skill_id: string }; Returns: undefined };
       next_skill_sort_order: {
         Args: { p_team_id: string; p_category_id: string; p_parent_id: string | null };
         Returns: number;

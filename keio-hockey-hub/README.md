@@ -31,6 +31,7 @@ Notion や Google スプレッドシートで分かれている運営を1つに�
 | Phase 9 | お知らせ一覧・保存容量の集計と掃除・操作の記録・CSV 書き出し   | ✅ 完了 |
 | 追加    | 測定の記録と推移（自己ベスト・前回比・折れ線）                 | ✅ 完了 |
 | 追加    | スキル定義の管理・役割と権限の変更（SQL 不要で運用できる）     | ✅ 完了 |
+| 追加    | 消したものを戻す（動画は30日以内、記録は期限なし）             | ✅ 完了 |
 
 進め方の詳細は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)、
 細かい作業一覧は [TASKS.md](TASKS.md) にあります。
@@ -156,6 +157,7 @@ Supabase の SQL Editor で、`supabase/migrations/` の中を **番号順に** 
 0017_measurement_guards.sql          測定の参照先チェックと、自分の記録の入力
 0018_role_guards.sql                 役割を自分で上げられないようにする
 0019_soft_delete_visibility.sql      消した記録が消した人からも見えないようにする
+0020_restore.sql                     消したものを戻せるようにする
 ```
 
 Supabase CLI が使える場合は次でも構いません。
