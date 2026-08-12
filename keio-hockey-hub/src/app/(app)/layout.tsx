@@ -1,7 +1,7 @@
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { MAIN_NAV } from '@/components/layout/nav-links';
 import { SideNav } from '@/components/layout/side-nav';
-import { can, requireSession } from '@/lib/auth/session';
+import { can, isStaff, requireSession } from '@/lib/auth/session';
 import { env } from '@/lib/env';
 import { logout } from '@/features/auth/actions';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // 権限を持たない入口は最初から出さない。
   // ただし出さないことは権限確認ではない。実際の判定はページ側と RLS で行う。
-  const links = MAIN_NAV.filter((link) => !link.permission || can(session, link.permission));
+  const links = MAIN_NAV.filter(
+    (link) => (!link.permission || can(session, link.permission)) && (!link.staffOnly || isStaff(session)),
+  );
 
   // スマートフォンは幅が足りないので、毎日通る道だけを下に出す。
   // 出さなかったものは設定から辿れる。

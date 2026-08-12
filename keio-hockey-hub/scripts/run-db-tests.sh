@@ -94,6 +94,7 @@ run_test "動画・クリップ・質問のテスト" supabase/tests/video_test.
 run_test "アップロードのテスト" supabase/tests/upload_test.sql
 run_test "フィードバックの一周のテスト" supabase/tests/feedback_test.sql
 run_test "スキルの申請と承認のテスト" supabase/tests/skill_test.sql
+run_test "容量・掃除・監査ログ・通知のテスト" supabase/tests/ops_test.sql
 
 echo
 if [[ "$FAILED" != "0" ]]; then

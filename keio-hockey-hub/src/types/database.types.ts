@@ -667,6 +667,31 @@ export type NotificationTargetRow = {
   created_at: string;
 };
 
+export type StorageUsageSnapshotRow = {
+  id: string;
+  team_id: string;
+  captured_on: string;
+  total_bytes: number;
+  video_bytes: number;
+  image_bytes: number;
+  pdf_bytes: number;
+  temp_bytes: number;
+  deleted_bytes: number;
+  file_count: number;
+  created_at: string;
+};
+
+export type FileDeletionJobRow = {
+  id: string;
+  team_id: string;
+  file_id: string;
+  scheduled_for: string;
+  status: 'pending' | 'done' | 'failed';
+  attempted_at: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
 export type AuditLogRow = {
   id: string;
   team_id: string | null;
@@ -815,6 +840,14 @@ export type Database = {
       >;
       notification_targets: TableShape<NotificationTargetRow, 'id' | 'read_at' | 'created_at'>;
       audit_logs: TableShape<AuditLogRow, Exclude<keyof AuditLogRow, 'action'>>;
+      storage_usage_snapshots: TableShape<
+        StorageUsageSnapshotRow,
+        Exclude<keyof StorageUsageSnapshotRow, 'team_id' | 'captured_on'>
+      >;
+      file_deletion_jobs: TableShape<
+        FileDeletionJobRow,
+        Exclude<keyof FileDeletionJobRow, 'team_id' | 'file_id' | 'scheduled_for'>
+      >;
       videos: TableShape<VideoRow, Exclude<keyof VideoRow, 'team_id' | 'provider' | 'title' | 'created_by'>>;
       video_clips: TableShape<
         VideoClipRow,
@@ -891,6 +924,13 @@ export type Database = {
       /** 論理削除は RPC で行う（0013）。SELECT ポリシーとの兼ね合いのため。 */
       soft_delete_video: { Args: { p_video_id: string }; Returns: undefined };
       soft_delete_video_clip: { Args: { p_clip_id: string }; Returns: undefined };
+      /** 容量の集計と掃除は、本人以外・削除済みの行を触るので関数を通す（0016）。 */
+      capture_storage_usage: { Args: { p_team_id: string }; Returns: StorageUsageSnapshotRow };
+      complete_file_deletion: {
+        Args: { p_job_id: string; p_error?: string | null };
+        Returns: undefined;
+      };
+      expire_stale_uploads: { Args: { p_team_id: string }; Returns: number };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

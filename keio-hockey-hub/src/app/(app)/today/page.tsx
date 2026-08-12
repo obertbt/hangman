@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AlertTriangle, Award, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
+import { AlertTriangle, Award, Bell, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -47,6 +47,19 @@ async function PlayerToday() {
         <p className="text-xs text-[--color-muted]">{formatDateLabel(data.date)}</p>
         <h1 className="mt-1 text-xl font-bold">{headline}</h1>
       </header>
+
+      {data.unreadNotificationCount > 0 ? (
+        <Link
+          href="/notifications"
+          className="flex min-h-12 items-center justify-between gap-2 rounded-lg border border-[--color-border] px-3 py-2 text-sm"
+        >
+          <span className="flex items-center gap-2">
+            <Bell size={16} aria-hidden />
+            まだ読んでいないお知らせが {data.unreadNotificationCount} 件あります
+          </span>
+          <ChevronRight size={16} className="text-[--color-muted]" aria-hidden />
+        </Link>
+      ) : null}
 
       {/* 残っていること。ここが画面の主役。 */}
       <Card>
@@ -179,6 +192,19 @@ async function CoachToday() {
         <p className="text-xs text-[--color-muted]">{formatDateLabel(data.date)}</p>
         <h1 className="mt-1 text-xl font-bold">今日の状況</h1>
       </header>
+
+      {data.unreadNotificationCount > 0 ? (
+        <Link
+          href="/notifications"
+          className="flex min-h-12 items-center justify-between gap-2 rounded-lg border border-[--color-border] px-3 py-2 text-sm"
+        >
+          <span className="flex items-center gap-2">
+            <Bell size={16} aria-hidden />
+            まだ読んでいないお知らせが {data.unreadNotificationCount} 件あります
+          </span>
+          <ChevronRight size={16} className="text-[--color-muted]" aria-hidden />
+        </Link>
+      ) : null}
 
       <Card>
         <CardHeader title="今日の予定" icon={<CalendarDays size={16} aria-hidden />} />

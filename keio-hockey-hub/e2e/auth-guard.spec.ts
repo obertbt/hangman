@@ -20,6 +20,10 @@ const PROTECTED_PATHS = [
   '/feedback',
   '/skills',
   '/skills/applications',
+  '/notifications',
+  '/admin/export',
+  '/admin/storage',
+  '/admin/audit',
   '/admin/import',
   '/admin/submissions',
 ];
@@ -54,4 +58,19 @@ test('自己診断ページに秘密の値を出さない', async ({ page }) => 
   // 「設定済み / 未設定」だけを出し、値そのものは出さない
   expect(body).not.toContain('eyJ'); // JWT の始まり
   expect(body).toMatch(/設定済み|未設定/);
+});
+
+/**
+ * 書き出しはページではなくファイルを返す（Phase 9）。
+ * 未ログインで中身が降ってこないことを、リダイレクト先ではなく本文で確かめる。
+ */
+test('未ログインで CSV を取りに行っても中身が出ない', async ({ request }) => {
+  const response = await request.get('/admin/export/members', { maxRedirects: 0 });
+
+  // proxy がログインへ送る（302）。素通りして 200 で CSV が返ってはいけない。
+  expect(response.status()).toBeGreaterThanOrEqual(300);
+  expect(response.status()).toBeLessThan(400);
+
+  const body = await response.text();
+  expect(body).not.toContain('氏名,役割');
 });

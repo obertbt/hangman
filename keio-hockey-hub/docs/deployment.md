@@ -40,6 +40,7 @@ README の「4. 最初の管理者を作る」を参照してください。
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | eyJ...                             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | eyJ...（Sensitive にする）         |
 | `R2_*`                          | 短編動画の投稿に必要（5章）        |
+| `STORAGE_LIMIT_BYTES`           | 容量の目安。既定 25GB              |
 
 4. Deploy する
 5. `https://<ドメイン>/setup-check` で設定が入っているか確認する

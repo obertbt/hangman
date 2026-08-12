@@ -89,6 +89,14 @@ export const limits = {
   deletedFileRetentionDays: numberFromEnv(process.env.DELETED_FILE_RETENTION_DAYS, 30),
   maxImportFileSizeBytes: numberFromEnv(process.env.MAX_IMPORT_FILE_SIZE_BYTES, 10_485_760),
   maxImportRows: numberFromEnv(process.env.MAX_IMPORT_ROWS, 10_000),
+  /**
+   * 保存容量の目安（59章）。
+   *
+   * R2 に技術的な上限があるわけではない。
+   * 「これ以上増えたら費用と運用を見直す」という自分たちの線引き。
+   * 既定の25GBは docs/capacity-planning.md の見積もりに合わせている。
+   */
+  storageLimitBytes: numberFromEnv(process.env.STORAGE_LIMIT_BYTES, 26_843_545_600),
 } as const;
 
 export type Limits = typeof limits;

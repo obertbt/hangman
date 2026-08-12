@@ -1,9 +1,13 @@
 import {
   Award,
+  Bell,
   CalendarDays,
   ClipboardList,
+  Database,
+  HardDrive,
   Home,
   MessageCircle,
+  ScrollText,
   Settings,
   Users,
   Video,
@@ -17,6 +21,13 @@ export interface NavLink {
   icon: typeof Home;
   /** この権限を持つ人にだけ見せる。 */
   permission?: Permission;
+  /**
+   * スタッフ（管理者・コーチ・マネージャー）にだけ見せる。
+   *
+   * 監査ログのように「特定の権限」ではなく立場で決まるものに使う。
+   * RLS 側も同じ条件（app.is_staff）で守っている。
+   */
+  staffOnly?: boolean;
   /**
    * スマートフォンの下部ナビゲーションに出すか。
    *
@@ -36,7 +47,11 @@ export const MAIN_NAV: NavLink[] = [
   { href: '/videos', label: '動画', icon: Video, permission: 'video.view_team', bottom: true },
   { href: '/feedback', label: '質問', icon: MessageCircle, bottom: true },
   { href: '/skills', label: 'スキル', icon: Award, bottom: true },
+  { href: '/notifications', label: 'お知らせ', icon: Bell },
   { href: '/members', label: '名簿', icon: Users },
+  { href: '/admin/export', label: '書き出し', icon: Database },
   { href: '/admin/import', label: 'データ移行', icon: ClipboardList, permission: 'import.execute' },
+  { href: '/admin/storage', label: '保存容量', icon: HardDrive, permission: 'storage.manage' },
+  { href: '/admin/audit', label: '操作の記録', icon: ScrollText, staffOnly: true },
   { href: '/settings', label: '設定', icon: Settings, bottom: true },
 ];
