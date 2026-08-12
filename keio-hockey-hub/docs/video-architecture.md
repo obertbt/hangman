@@ -21,7 +21,7 @@ flowchart LR
   end
 
   subgraph db["PostgreSQL（1行 = 数百バイト）"]
-    clip1["clip A: 754秒〜828秒"]
+    clip1["clip A: 754秒〜768秒（12:34〜12:48）"]
     clip2["clip B: 1502秒〜1560秒"]
     clip3["clip C: 2210秒〜2245秒"]
   end
@@ -30,7 +30,7 @@ flowchart LR
   video -.-> clip2
   video -.-> clip3
 
-  clip1 --> play["再生時に<br/>?start=754&end=828<br/>を付けて埋め込む"]
+  clip1 --> play["再生時に<br/>?start=754&end=768<br/>を付けて埋め込む"]
 ```
 
 100個のクリップを作っても、増えるのは DB の100行だけです。

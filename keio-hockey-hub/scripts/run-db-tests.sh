@@ -77,5 +77,8 @@ psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql 2>&1 | 
 echo "--- 制約テスト"
 psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/constraints_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
 
+echo "--- 動画・クリップ・質問のテスト"
+psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/video_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
+
 echo
 echo "すべて通りました。"

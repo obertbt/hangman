@@ -109,7 +109,54 @@ function safeNextPath(next: FormDataEntryValue | null): string {
 監査ログは `authenticated` から `insert/update/delete` を剥奪しています。
 書き込みはサーバー経由だけです。
 
-## 8. RLS のよくある落とし穴
+## 8. RLS だけでは足りなかった例（実際に見つかった穴）
+
+Phase 5 のテストを書いていて、次の穴が見つかりました。
+
+`video_clips` のポリシーはこうなっていました。
+
+```sql
+with check (created_by = app.current_profile_id() and app.is_team_member(team_id))
+```
+
+「作成者が自分」「team_id が自分のチーム」は見ていますが、
+**参照先の `video_id` がどのチームの動画かを見ていません**。
+
+そのため、別チームの動画のUUIDを知っていれば、
+その動画を指すクリップを自分のチームの行として作れてしまいました。
+同じことが `feedback_requests` でも起こり得ました。
+
+### なぜ RLS で防ぎきれなかったか
+
+RLS は「その行を書いてよいか」を見る仕組みです。
+**「その行が指している別の行が、同じチームのものか」までは自動では見ません。**
+
+外部キー制約もチームの一致までは見ません。
+
+### 対処（0011_cross_team_reference_guard.sql）
+
+チームの一致は権限ではなく**データの整合性**の問題なので、
+RLS ではなくトリガで守ることにしました。
+こうすると service role を含め、どの経路から書いても守られます。
+
+```sql
+if v_team_id <> new.team_id then
+  raise exception '別のチームの動画は参照できません';
+end if;
+```
+
+対象: `video_clips` → `videos` /
+`feedback_requests` → `videos`, `video_clips`, `events`, `daily_reports`, `team_members` /
+`videos` → `files`, `events`
+
+### 教訓
+
+**他のテーブルを指す列（外部キー）を足したら、
+その参照先のチームが一致するかを必ず確かめること。**
+
+新しいテーブルを足すときのチェック項目に加えました（下記）。
+
+## 9. RLS のよくある落とし穴
 
 ### 無限再帰
 
@@ -129,12 +176,13 @@ function safeNextPath(next: FormDataEntryValue | null): string {
 
 1. `alter table ... enable row level security;`
 2. ポリシーを書く
-3. `rls_test.sql` に確認を足す
+3. **他のテーブルを指す列があれば、参照先のチームが一致するかをトリガで確かめる**（上記の穴）
+4. `rls_test.sql` か `video_test.sql` に確認を足す
 
 RLS を有効にしてポリシーを書かないと、そのテーブルは**誰からも見えなくなります**
 （安全側に倒れるので、漏れるよりはましです）。
 
-## 9. 確認のしかた
+## 10. 確認のしかた
 
 ```bash
 pnpm db:test    # RLS と制約

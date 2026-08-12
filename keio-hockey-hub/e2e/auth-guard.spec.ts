@@ -16,6 +16,7 @@ const PROTECTED_PATHS = [
   '/goal',
   '/report',
   '/training',
+  '/videos',
   '/admin/import',
   '/admin/submissions',
 ];

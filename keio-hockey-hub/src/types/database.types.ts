@@ -295,6 +295,89 @@ export type TrainingSetRow = {
   created_at: string;
 };
 
+export type VideoProviderName = 'youtube' | 'r2' | 'cloudflare_stream' | 'external';
+export type MediaVisibility = 'private_staff' | 'selected_members' | 'team';
+
+export type VideoRow = {
+  id: string;
+  team_id: string;
+  provider: VideoProviderName;
+  provider_video_id: string | null;
+  file_id: string | null;
+  title: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  duration_seconds: number | null;
+  recorded_at: string | null;
+  uploaded_at: string | null;
+  event_id: string | null;
+  visibility: MediaVisibility;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type VideoClipRow = {
+  id: string;
+  team_id: string;
+  video_id: string;
+  created_by: string;
+  start_seconds: number;
+  end_seconds: number;
+  title: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type FeedbackStatus =
+  | 'draft'
+  | 'submitted'
+  | 'assigned'
+  | 'reviewing'
+  | 'answered'
+  | 'acknowledged'
+  | 'follow_up'
+  | 'closed'
+  | 'withdrawn';
+
+export type QuestionType =
+  | 'judgement'
+  | 'play_choice'
+  | 'technique'
+  | 'positioning'
+  | 'defense_priority'
+  | 'attack_positioning'
+  | 'skill_application'
+  | 'other';
+
+export type FeedbackRequestRow = {
+  id: string;
+  team_id: string;
+  requester_id: string;
+  assigned_coach_id: string | null;
+  video_id: string | null;
+  video_clip_id: string | null;
+  event_id: string | null;
+  daily_report_id: string | null;
+  skill_id: string | null;
+  skill_application_id: string | null;
+  question_type: QuestionType;
+  question: string;
+  status: FeedbackStatus;
+  visibility: MediaVisibility;
+  submitted_at: string | null;
+  assigned_at: string | null;
+  answered_at: string | null;
+  acknowledged_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 export type ImportSessionRow = {
   id: string;
   team_id: string;
@@ -524,6 +607,15 @@ export type Database = {
       >;
       notification_targets: TableShape<NotificationTargetRow, 'id' | 'read_at' | 'created_at'>;
       audit_logs: TableShape<AuditLogRow, Exclude<keyof AuditLogRow, 'action'>>;
+      videos: TableShape<VideoRow, Exclude<keyof VideoRow, 'team_id' | 'provider' | 'title' | 'created_by'>>;
+      video_clips: TableShape<
+        VideoClipRow,
+        Exclude<keyof VideoClipRow, 'team_id' | 'video_id' | 'created_by' | 'start_seconds' | 'end_seconds'>
+      >;
+      feedback_requests: TableShape<
+        FeedbackRequestRow,
+        Exclude<keyof FeedbackRequestRow, 'team_id' | 'requester_id' | 'question'>
+      >;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
