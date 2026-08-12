@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 
@@ -205,7 +206,11 @@ export function TrainingForm({ date, eventId }: { date: string; eventId: string 
           </Field>
 
           <p className="text-xs text-[--color-muted]">
-            自主練の動画からコーチに質問できるようにする機能は Phase 7 で追加します。
+            動画を撮った場合は、
+            <Link href="/videos/upload" className="text-keio-700 dark:text-keio-300 underline">
+              動画を投稿
+            </Link>
+            してコーチに質問できます。
           </p>
         </div>
       ) : null}

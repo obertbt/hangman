@@ -10,6 +10,7 @@ import { MessageForm } from '@/features/feedback/components/message-form';
 import { ShareDecision } from '@/features/feedback/components/share-decision';
 import { availableActions, isActionAllowed, type Actor } from '@/features/feedback/lib/state';
 import { getFeedbackDetail } from '@/features/feedback/queries';
+import { R2Player } from '@/features/upload/components/r2-player';
 import { VideoWatch } from '@/features/video/components/video-watch';
 import { can, requireSession } from '@/lib/auth/session';
 import { createClient } from '@/lib/supabase/server';
@@ -72,6 +73,8 @@ export default async function FeedbackDetailPage({ params }: { params: Promise<{
           clips={clip ? [clip] : []}
           selectedClipId={clip?.id ?? null}
         />
+      ) : video?.provider === 'r2' ? (
+        <R2Player videoId={video.id} />
       ) : null}
 
       <Card>

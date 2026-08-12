@@ -87,6 +87,28 @@ stateDiagram-v2
 論理削除から30日の猶予があるのは、
 **選手が誤って消した動画を取り戻せるようにする**ためです。
 
+### 論理削除は関数を通す
+
+`deleted_at` を入れるだけの単純な UPDATE では消せません。
+
+閲覧のポリシーが `deleted_at is null` を条件にしているため、
+`deleted_at` を入れた行はそのポリシーを満たさなくなります。
+PostgreSQL は UPDATE のときに **更新後の行にも SELECT ポリシーを適用する**ので、
+自分で自分を見えなくする更新は弾かれます。
+
+そのため削除は `soft_delete_video` / `soft_delete_video_clip`
+（`security definer`、0013）を通します。
+関数の中で、順に次を行います。
+
+1. 呼び出した人がその動画を消してよいか確かめる（投稿者本人か、`storage.manage` を持つ人）
+2. `videos.deleted_at` と `files.deleted_at` を入れる
+3. `audit_logs` に誰が何を消したかを残す
+4. `file_deletion_jobs` に30日後の物理削除を予約する
+
+アプリ側からは `supabase.rpc('soft_delete_video', ...)` を呼ぶだけです。
+権限確認を関数の中に閉じ込めているので、
+`security definer` でも「誰でも消せる」にはなりません。
+
 ## 4. 抽象化
 
 ```ts
@@ -107,9 +129,10 @@ export interface ObjectStorage {
 
 **UI から直接ストレージを触らせません。** 呼ぶのは常にサーバー側です。
 
-R2 が未設定でもアプリは動きます（Phase 7 まで動画投稿を使わないため）。
+R2 が未設定でもアプリは動きます。動画の投稿だけが使えません。
 `getObjectStorage()` を呼んだ時点で初めて例外になります。
-設定状況は `/setup-check` で確認できます。
+投稿画面は、未設定なら「まだ使えません」と出して `/setup-check` へ案内します。
+設定状況は `/setup-check` で確認できます（設定済みかどうかだけを表示し、値は表示しません）。
 
 ## 5. 受け入れ判定
 
@@ -134,7 +157,53 @@ if (!result.ok) return { error: result.reason };
 - 長さ（動画のみ）
 - その日の投稿本数
 
-## 6. 容量の集計
+## 6. 実際の投稿の流れ
+
+```mermaid
+sequenceDiagram
+  participant B as ブラウザ
+  participant S as サーバー（Server Action）
+  participant D as PostgreSQL
+  participant R as R2
+
+  B->>B: 動画を選ぶ → 長さと容量を読み取る（親切のため）
+  B->>S: startVideoUpload（ファイル名・種別・容量・長さ）
+  S->>D: その日の投稿本数を数える
+  S->>S: planUpload（形式・容量・長さ・本数を判定 → storage key を決める）
+  S->>D: upload_sessions に pending で1行
+  S->>R: Presigned PUT URL を作る（署名は保存しない）
+  S-->>B: URL・ヘッダ・セッションID
+
+  B->>R: PUT（動画本体。サーバーを通らない）
+  R-->>B: 200
+
+  B->>S: completeVideoUpload（セッションID・題名）
+  S->>D: セッションを取り出す（期限・持ち主・key のチームを確認）
+  S->>R: statObject（実物の容量と種別）
+  S->>S: verifyUploadedObject（申告と一致するか）
+  S->>D: files → videos を作る（既定は private_staff）
+  S->>D: upload_sessions を ready にする
+  S-->>B: videoId
+  B->>B: /videos/<id> へ移動
+```
+
+守っていること:
+
+| 守ること                             | どこで                                          |
+| ------------------------------------ | ----------------------------------------------- |
+| 動画本体がサーバーを通らない         | ブラウザ → R2 の直接 PUT                        |
+| 判定をブラウザに任せない             | `startVideoUpload` が `planUpload` を必ず通す   |
+| 1日の本数を申告で数えない            | `upload_sessions` を DB で数える                |
+| 「完了した」を信用しない             | `statObject` で実物を見てから `files` を作る    |
+| 署名付き URL を DB に保存しない      | 返すだけ。再生用は開くたびに発行する            |
+| 別チームの key を掴まされない        | `isKeyOwnedByTeam` を完了時と再生時の両方で通す |
+| 投稿した動画がいきなり全体に見えない | `visibility` の既定が `private_staff`           |
+
+再生（`getPlaybackUrl`）は毎回発行します。
+期限（既定15分）が切れた状態で再生しようとしたら、
+プレイヤーが取り直せるようにしてあります。
+
+## 7. 容量の集計
 
 `storage_usage_snapshots` に日次で記録します（59章）。
 
@@ -148,7 +217,7 @@ if (!result.ok) return { error: result.reason };
 
 警告のしきい値は 70%（注意）/ 85%（警告）/ 95%（緊急）です。
 
-## 7. R2 の設定
+## 8. R2 の設定
 
 ```
 R2_ACCOUNT_ID=

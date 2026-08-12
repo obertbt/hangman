@@ -2,12 +2,12 @@
 
 ## 1. 必要なもの
 
-| サービス                         | 用途                       | 費用       |
-| -------------------------------- | -------------------------- | ---------- |
-| Supabase                         | 認証とデータベース         | 無料枠あり |
-| Vercel（推奨）または自前サーバー | アプリの実行               | 無料枠あり |
-| Cloudflare R2                    | 動画・画像（Phase 7 から） | 従量       |
-| YouTube                          | 長時間動画                 | 無料       |
+| サービス                         | 用途               | 費用       |
+| -------------------------------- | ------------------ | ---------- |
+| Supabase                         | 認証とデータベース | 無料枠あり |
+| Vercel（推奨）または自前サーバー | アプリの実行       | 無料枠あり |
+| Cloudflare R2                    | 短編動画・画像     | 従量       |
+| YouTube                          | 長時間動画         | 無料       |
 
 ## 2. Supabase の準備
 
@@ -39,7 +39,7 @@ README の「4. 最初の管理者を作る」を参照してください。
 | `NEXT_PUBLIC_SUPABASE_URL`      | https://xxxx.supabase.co           |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | eyJ...                             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | eyJ...（Sensitive にする）         |
-| `R2_*`                          | Phase 7 から                       |
+| `R2_*`                          | 短編動画の投稿に必要（5章）        |
 
 4. Deploy する
 5. `https://<ドメイン>/setup-check` で設定が入っているか確認する
@@ -57,7 +57,7 @@ docker compose up --build -d
 - 秘密情報はイメージに焼き込まず、実行時に `.env.local` から渡します
 - `NEXT_PUBLIC_*` はビルド時に埋め込まれるため、build args で渡しています
 
-## 5. Cloudflare R2（Phase 7 から）
+## 5. Cloudflare R2（短編動画の投稿に必要）
 
 1. Cloudflare ダッシュボード → R2 → Bucket を作る
 2. **Public Access は無効のまま**にする

@@ -146,30 +146,47 @@ LINE / Discord / Strava / Google Fit / ネイティブアプリ /
 | 4     | コンディション・個人目標・日報・トレーニング記録・提出状況                        | ✅   |
 | 5     | YouTube 動画登録・一覧・Player・仮想クリップ・質問投稿                            | ✅   |
 | 6     | コーチ回答・担当設定・状態管理・再質問・選手確認・通知                            | ✅   |
-| 7     | R2 Upload Session・Presigned PUT・Direct Upload・検証・Signed GET                 | 次   |
-| 8     | スキル階層・申請・動画添付・Feedback連携・承認・履歴                              |      |
+| 7     | R2 Upload Session・Presigned PUT・Direct Upload・検証・Signed GET                 | ✅   |
+| 8     | スキル階層・申請・動画添付・Feedback連携・承認・履歴                              | 次   |
 | 9     | Storage集計・Import rollback拡張・CSV Export・Audit Log・測定・バックアップ       |      |
 
 Phase 6 以降のテーブルと RLS は**すでに作成済み**。
 残っているのは画面と Server Action。
 
-### 次にやること（Phase 7: R2 動画投稿）
+### 次にやること（Phase 8: スキル）
 
-YouTube に上げるほどでもない短い動画を、選手がその場で投稿できるようにする。
+循環の最後の輪。コーチの回答に書いた `related_skill_id` を、
+スキル申請につなげる。
 
-1. Upload Session の作成（容量・長さ・1日の本数を確かめる）
-2. Presigned PUT URL の発行
-3. ブラウザから R2 へ直接アップロード（サーバーを通さない）
-4. アップロード後、サーバーが実物を確認してから `files` を確定する
-5. 署名付き GET URL で再生（既定15分）
-6. 自主練の記録から、そのまま質問へつなぐ導線
+1. スキル階層（大分類 → 中目標 → 小目標）の一覧と、いまの進捗
+2. スキル申請（根拠として動画・クリップ・フィードバックを添える）
+3. コーチの審査と承認、その履歴
+4. フィードバックの回答画面から、そのまま申請へ進む導線
 
-`ObjectStorage` 抽象と `CloudflareR2Storage`、storage key の組み立て、
-受け入れ判定はすべて実装済みでテストもある。
-残っているのは Upload Session の Server Action と画面。
+テーブル（`skill_categories` / `skills` / `player_skills` /
+`skill_applications` / `skill_reviews`）と RLS は 0006 で作成済み。
+残っているのは画面と Server Action。
 
-**Phase 6 で循環は一周した。** Phase 7 以降は、その循環に
-「短い動画」と「スキル承認」を足していく作業になる。
+Phase 6 で循環は一周し、Phase 7 で「短い動画」が加わった。
+Phase 8 は「その積み重ねが形として残る」ところを作る。
+
+### Phase 7 で分かったこと
+
+- **`visibility` を RLS の条件に入れ忘れると、公開範囲は飾りになる**。
+  `videos_select` が `video.view_team`（全選手が既定で持つ権限）を
+  単独の枝に書いていたため、`private_staff` の動画がチーム全員から見えていた。
+  権限（見てよい人か）と公開範囲（誰に向けた動画か）は別のもので、
+  掛け合わせないと意味がない（`0012_video_visibility_fix.sql`、docs/security.md 9章）
+- **PostgreSQL は UPDATE のとき、更新後の行にも SELECT ポリシーを適用する**。
+  閲覧ポリシーが `deleted_at is null` を条件にしている以上、
+  `update ... set deleted_at = now()` は必ず弾かれる。
+  ポリシーの書き方の問題ではなく、論理削除とこの規則は両立しない。
+  削除は `security definer` の関数を通すことにした（`0013_soft_delete_rpc.sql`）
+- 進み具合の表示に `fetch` は使えない（送信中の割合が取れない）。
+  XHR の `upload.onprogress` を使う。回線の細い場所で数十MBを送ると
+  1分近くかかるので、割合が出ないと「固まった」と思われて中断される
+- 署名付き URL は「発行して終わり」ではない。期限が切れた状態で
+  再生しようとしたときに取り直せる導線が要る
 
 ### Phase 6 で分かったこと
 

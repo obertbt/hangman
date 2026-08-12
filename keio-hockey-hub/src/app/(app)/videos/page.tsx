@@ -34,6 +34,20 @@ export default async function VideosPage() {
         </p>
       </header>
 
+      {canUpload ? (
+        <Card>
+          <CardHeader
+            title="スマートフォンから短い動画を投稿する"
+            description="自主練や切り抜いた動画は、YouTube を経由せずそのまま投稿できます。"
+            action={
+              <Link href="/videos/upload" className="text-keio-700 dark:text-keio-300 text-sm underline">
+                投稿する
+              </Link>
+            }
+          />
+        </Card>
+      ) : null}
+
       {canUpload ? <VideoForm events={events} /> : null}
 
       <Card>

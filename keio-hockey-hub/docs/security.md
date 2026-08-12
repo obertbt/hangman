@@ -16,6 +16,8 @@
 | URL 直打ちでも回避できない             | RLS はクエリ単位で効く               | `auth-guard.spec.ts` |
 | 選手が管理画面を見られない             | `requirePermission()` + RLS          | `rls_test.sql`       |
 | 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに  | ポリシー定義         |
+| 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる   | `upload_test.sql`    |
+| 他人の動画を消せない                   | `soft_delete_video` の中で権限確認   | `upload_test.sql`    |
 
 ## 2. 二重に守る
 
@@ -91,17 +93,20 @@ function safeNextPath(next: FormDataEntryValue | null): string {
 - storage key に氏名を入れない
 - key のチームを検算してから URL を発行する
 - MIME と容量と長さをサーバー側で確認してから Presigned URL を出す
+- 「アップロードが完了した」というブラウザの申告を信用せず、R2 の実物を見てから確定する
+- 削除は `soft_delete_video` を通す（理由は10章）
 
 ## 7. 監査ログ（63章）
 
-| 記録する操作                                      | 状態        |
-| ------------------------------------------------- | ----------- |
-| Import 実行 / Import 取り消し                     | ✅ 実装済み |
-| Role 変更 / Permission 変更                       | ⬜ Phase 9  |
-| スキル承認                                        | ⬜ Phase 8  |
-| 動画アップロード / 削除 / 公開範囲変更 / 共有承認 | ⬜ Phase 7  |
-| フィードバック回答                                | ⬜ Phase 6  |
-| 容量設定変更 / R2 物理削除                        | ⬜ Phase 9  |
+| 記録する操作                                 | 状態        |
+| -------------------------------------------- | ----------- |
+| Import 実行 / Import 取り消し                | ✅ 実装済み |
+| Role 変更 / Permission 変更                  | ⬜ Phase 9  |
+| スキル承認                                   | ⬜ Phase 8  |
+| 動画の削除（`soft_delete_video` の中で記録） | ✅ 実装済み |
+| 動画アップロード / 公開範囲変更 / 共有承認   | ⬜ Phase 9  |
+| フィードバック回答                           | ⬜ Phase 9  |
+| 容量設定変更 / R2 物理削除                   | ⬜ Phase 9  |
 
 **秘密鍵や署名付き URL そのものはログに残しません。**
 残すのは「誰が・いつ・何に対して・何をしたか」だけです。
@@ -156,7 +161,61 @@ end if;
 
 新しいテーブルを足すときのチェック項目に加えました（下記）。
 
-## 9. RLS のよくある落とし穴
+## 9. 公開範囲が効いていなかった例（Phase 7 で見つかった穴）
+
+`videos_select` は、こういう形になっていました。
+
+```sql
+using (
+  app.is_team_member(team_id)
+  and (
+    created_by = app.current_profile_id()
+    or app.has_permission('video.view_team')   -- ←ここ
+    ...
+  )
+)
+```
+
+`video.view_team` は**全選手が既定で持っている権限**です。
+つまりこの1行が「部員なら全部見てよい」と言っており、
+`visibility` の `private_staff` / `private` が意味を失っていました。
+
+投稿した動画は既定で `private_staff`（コーチとスタッフだけ）にしているのに、
+実際にはチーム全員から見えていたことになります。
+**画面には出していなくても、直接クエリを投げれば取れる状態でした。**
+
+### なぜ起きたか
+
+権限（`video.view_team` を持っているか）と
+公開範囲（その動画が誰に向けて公開されているか）は別のものなのに、
+権限だけで判定を書いてしまったためです。
+
+`video.view_team` が答えるのは
+「チームに公開された動画を見てよいか」であって、
+「どの動画でも見てよいか」ではありません。
+
+### 対処（0012_video_visibility_fix.sql）
+
+権限と公開範囲を掛け合わせる形に直しました。
+
+```sql
+or (visibility = 'team' and app.has_permission('video.view_team'))
+or app.has_permission('video.feedback_answer')   -- コーチ・スタッフ
+or app.has_permission('storage.manage')
+```
+
+`files_select` も同じ形に直しています
+（動画が見えなくてもファイルが見えたら意味がないため）。
+
+### 教訓
+
+**「持っている人が多い権限」を `or` の枝に置くときは、
+それが実質 `true` になっていないかを疑うこと。**
+
+`video.view_team` のように既定で全員が持つ権限は、
+単独の条件として書くと、その `or` から先が全部無意味になります。
+
+## 10. RLS のよくある落とし穴
 
 ### 無限再帰
 
@@ -167,6 +226,29 @@ end if;
 
 `security definer` の関数は `set search_path = public, pg_temp` を必ず付けます。
 付けないと、呼び出し側がスキーマを差し替えて関数の中身を乗っ取れます。
+
+### 更新後の行にも SELECT ポリシーが効く
+
+PostgreSQL は UPDATE のとき、**更新後の行に対しても SELECT ポリシーを適用します**。
+そのため「自分で自分を見えなくする更新」は通りません。
+
+閲覧ポリシーに `deleted_at is null` を入れている以上、
+
+```sql
+update videos set deleted_at = now() where id = $1;
+-- ERROR: new row violates row-level security policy
+```
+
+は必ず失敗します。ポリシーの書き方が悪いのではなく、
+論理削除とこの規則は原理的に両立しません。
+
+対処は、削除を `security definer` の関数に通すことです
+（`soft_delete_video` / `soft_delete_video_clip`、0013）。
+権限の確認は関数の中で自分で行うので、RLS を外した分は関数が肩代わりします。
+
+同じことは「公開範囲を狭める更新」でも起きます。
+`visibility` を条件に含むポリシーがあるテーブルで
+公開範囲を絞る更新を書くときは、同じ形が要ります。
 
 ### 新しいテーブルを足したとき
 
@@ -182,7 +264,7 @@ end if;
 RLS を有効にしてポリシーを書かないと、そのテーブルは**誰からも見えなくなります**
 （安全側に倒れるので、漏れるよりはましです）。
 
-## 10. 確認のしかた
+## 11. 確認のしかた
 
 ```bash
 pnpm db:test    # RLS と制約

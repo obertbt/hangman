@@ -166,8 +166,14 @@ export interface VideoProvider {
 | 実装                            | 状態        |
 | ------------------------------- | ----------- |
 | `YouTubeVideoProvider`          | ✅ 実装済み |
-| `R2VideoProvider`               | ⬜ Phase 7  |
+| `R2VideoProvider`               | ⬜ 将来     |
 | `CloudflareStreamVideoProvider` | ⬜ 将来     |
+
+R2 の短編動画は、この抽象を通していません。
+`getPlaybackUrl`（Server Action）が `ObjectStorage` から署名付き URL を出し、
+`<video>` に渡すだけで足りるためです。
+仮想クリップのように「提供元ごとに再生の作り方が違う」場面が出てきたら、
+そのときに `R2VideoProvider` に寄せます。
 
 MVP では YouTube Data API を呼びません（外部依存を増やさないため）。
 動画の長さは登録時に人が入力します。API を足す場合はこのクラスだけを差し替えます。

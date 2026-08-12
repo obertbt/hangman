@@ -155,7 +155,7 @@ classDiagram
   class CloudflareStreamVideoProvider
 
   VideoProvider <|.. YouTubeVideoProvider : 実装済み
-  VideoProvider <|.. R2VideoProvider : Phase 7
+  VideoProvider <|.. R2VideoProvider : 将来
   VideoProvider <|.. CloudflareStreamVideoProvider : 将来
 ```
 

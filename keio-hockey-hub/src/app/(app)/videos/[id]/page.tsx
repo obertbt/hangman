@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { AskForm } from '@/features/video/components/ask-form';
+import { R2Player } from '@/features/upload/components/r2-player';
 import { VideoWatch } from '@/features/video/components/video-watch';
 import { listClips, listCoaches, listQuestionsForVideo, getVideo } from '@/features/video/queries';
 import { can, requireSession } from '@/lib/auth/session';
@@ -60,9 +61,12 @@ export default async function VideoDetailPage({
           clips={clips}
           selectedClipId={clipParam ?? null}
         />
+      ) : video.provider === 'r2' ? (
+        // 22章: 署名付き URL は毎回発行する。DB には保存しない。
+        <R2Player videoId={video.id} />
       ) : (
         <Card>
-          <EmptyState>この動画は再生できません（保存先が YouTube ではありません）。</EmptyState>
+          <EmptyState>この動画は再生できません。</EmptyState>
         </Card>
       )}
 

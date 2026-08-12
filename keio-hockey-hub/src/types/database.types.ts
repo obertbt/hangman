@@ -378,6 +378,57 @@ export type FeedbackRequestRow = {
   deleted_at: string | null;
 };
 
+export type StorageProvider = 'r2' | 's3' | 'local';
+export type MediaType = 'video' | 'image' | 'pdf' | 'other';
+export type UploadStatus =
+  'pending' | 'uploading' | 'uploaded' | 'verifying' | 'ready' | 'failed' | 'quarantined' | 'deleted';
+
+export type FileRow = {
+  id: string;
+  team_id: string;
+  uploaded_by: string;
+  storage_provider: StorageProvider;
+  bucket: string;
+  storage_key: string;
+  original_filename: string | null;
+  normalized_filename: string | null;
+  mime_type: string;
+  size_bytes: number;
+  checksum: string | null;
+  media_type: MediaType;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  video_codec: string | null;
+  audio_codec: string | null;
+  frame_rate: number | null;
+  upload_status: UploadStatus;
+  visibility: MediaVisibility;
+  retention_policy: 'keep' | 'temporary';
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type UploadSessionRow = {
+  id: string;
+  team_id: string;
+  created_by: string;
+  file_id: string | null;
+  bucket: string;
+  storage_key: string;
+  declared_mime: string;
+  declared_size: number;
+  media_type: MediaType;
+  status: UploadStatus;
+  failure_reason: string | null;
+  expires_at: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SkillCategoryRow = {
   id: string;
   team_id: string;
@@ -723,9 +774,33 @@ export type Database = {
       >;
       skill_categories: TableShape<SkillCategoryRow, Exclude<keyof SkillCategoryRow, 'team_id' | 'name'>>;
       skills: TableShape<SkillRow, Exclude<keyof SkillRow, 'team_id' | 'skill_category_id' | 'name'>>;
+      files: TableShape<
+        FileRow,
+        Exclude<
+          keyof FileRow,
+          'team_id' | 'uploaded_by' | 'bucket' | 'storage_key' | 'mime_type' | 'size_bytes'
+        >
+      >;
+      upload_sessions: TableShape<
+        UploadSessionRow,
+        Exclude<
+          keyof UploadSessionRow,
+          | 'team_id'
+          | 'created_by'
+          | 'bucket'
+          | 'storage_key'
+          | 'declared_mime'
+          | 'declared_size'
+          | 'expires_at'
+        >
+      >;
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      /** 論理削除は RPC で行う（0013）。SELECT ポリシーとの兼ね合いのため。 */
+      soft_delete_video: { Args: { p_video_id: string }; Returns: undefined };
+      soft_delete_video_clip: { Args: { p_clip_id: string }; Returns: undefined };
+    };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;
   };
