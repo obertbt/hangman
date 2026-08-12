@@ -173,6 +173,30 @@ async function CoachToday() {
         )}
       </Card>
 
+      {/* 12章: 未対応の質問を見落とさない */}
+      <Card className={data.overdueFeedbackCount > 0 ? 'border-amber-400' : undefined}>
+        <CardHeader
+          title="動画の質問"
+          action={
+            <Link href="/feedback" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              一覧
+            </Link>
+          }
+        />
+        {data.awaitingFeedbackCount === 0 ? (
+          <EmptyState>未回答の質問はありません。</EmptyState>
+        ) : (
+          <p className="text-sm">
+            未回答 {data.awaitingFeedbackCount} 件
+            {data.overdueFeedbackCount > 0 ? (
+              <span className="ml-2 font-medium text-amber-700">
+                （うち {data.overdueFeedbackCount} 件は3日以上お待たせしています）
+              </span>
+            ) : null}
+          </p>
+        )}
+      </Card>
+
       <Card>
         <CardHeader
           title="コンディションに注意が要る選手"

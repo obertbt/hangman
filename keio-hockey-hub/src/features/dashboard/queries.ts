@@ -9,6 +9,8 @@ import {
   listUpcomingEvents,
   getActiveSeason,
 } from '@/features/timeline/queries';
+import { countUnreadAnswers, countWaitingQuestions, listAwaitingCoach } from '@/features/feedback/queries';
+import { isOverdue } from '@/features/feedback/lib/state';
 import type { EventRow, SeasonRow, WeekRow } from '@/types/database.types';
 
 import type { TodayState } from './lib/pending-actions';
@@ -80,6 +82,12 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
 
   const goalRow = goalResult.data?.[0];
 
+  // Phase 6: 未確認の回答と、回答待ちの質問の数
+  const [unreadFeedbackCount, waitingFeedbackCount] = await Promise.all([
+    countUnreadAnswers(session),
+    countWaitingQuestions(session),
+  ]);
+
   const todayState: TodayState = {
     events: events.map((event) => ({
       id: event.id,
@@ -92,9 +100,8 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
     hasGoal: Boolean(goalRow),
     hasReport: (reportResult.data?.length ?? 0) > 0,
     hasTraining: (trainingResult.data?.length ?? 0) > 0,
-    // Phase 6 で動画フィードバックを繋ぐまでは 0 のまま。
-    unreadFeedbackCount: 0,
-    waitingFeedbackCount: 0,
+    unreadFeedbackCount,
+    waitingFeedbackCount,
   };
 
   return {
@@ -118,6 +125,10 @@ export interface CoachDashboardData {
   missingReportNames: string[];
   /** 体調に注意が要る選手。 */
   concerningConditions: { name: string; note: string }[];
+  /** 未回答の動画質問（12章）。 */
+  awaitingFeedbackCount: number;
+  /** そのうち3日以上待たせているもの。 */
+  overdueFeedbackCount: number;
 }
 
 /** コーチ向け「今日」（12章）。 */
@@ -177,6 +188,12 @@ export async function getCoachDashboard(session: AppSession): Promise<CoachDashb
       note: describeCondition(row),
     }));
 
+  // 12章: 未対応の質問を見落とさないようにする
+  const awaiting = await listAwaitingCoach(session);
+  const overdueFeedbackCount = awaiting.filter((item) =>
+    isOverdue(item.request.status, item.request.submitted_at),
+  ).length;
+
   return {
     date,
     season,
@@ -185,6 +202,8 @@ export async function getCoachDashboard(session: AppSession): Promise<CoachDashb
     activeMemberCount: memberList.length,
     missingReportNames,
     concerningConditions,
+    awaitingFeedbackCount: awaiting.length,
+    overdueFeedbackCount,
   };
 }
 

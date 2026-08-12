@@ -17,6 +17,7 @@ const PROTECTED_PATHS = [
   '/report',
   '/training',
   '/videos',
+  '/feedback',
   '/admin/import',
   '/admin/submissions',
 ];

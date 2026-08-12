@@ -125,6 +125,9 @@ export async function savePracticeGoal(
     reflection: text(formData, 'reflection'),
   });
 
+  // どのフィードバックから引き継いだ目標かを残す（循環の記録）
+  const sourceFeedbackId = text(formData, 'source_feedback_id')?.trim() || null;
+
   if (!parsed.success) return { error: firstIssue(parsed.error) };
   const input = parsed.data;
 
@@ -144,6 +147,7 @@ export async function savePracticeGoal(
     achieved: input.achieved ?? null,
     reflection: input.reflection,
     event_id: input.event_id ?? null,
+    ...(sourceFeedbackId ? { source_feedback_id: sourceFeedbackId } : {}),
   };
 
   const { error } = existing

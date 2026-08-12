@@ -28,13 +28,19 @@ export function GoalForm({
   eventId,
   existing,
   suggestedGoal,
+  suggestionSource,
+  sourceFeedbackId,
   weekTheme,
 }: {
   date: string;
   eventId: string | null;
   existing: PracticeGoalRow | null;
-  /** 前回のコーチ回答から引き継いだ課題。 */
+  /** コーチの回答、または前回の日報から引き継いだ課題。 */
   suggestedGoal: string | null;
+  /** どこから来た候補か。文言を変えるために使う。 */
+  suggestionSource: 'feedback' | 'report' | null;
+  /** コーチの回答から来た場合、その質問のID。つながりを記録する。 */
+  sourceFeedbackId: string | null;
   weekTheme: string | null;
 }) {
   const [state, action] = useActionState<DailyActionState, FormData>(savePracticeGoal, {});
@@ -44,6 +50,9 @@ export function GoalForm({
     <form action={action} className="space-y-5">
       <input type="hidden" name="target_date" value={date} />
       <input type="hidden" name="event_id" value={eventId ?? ''} />
+      {sourceFeedbackId && !existing ? (
+        <input type="hidden" name="source_feedback_id" value={sourceFeedbackId} />
+      ) : null}
 
       {state.error ? <FormMessage tone="error">{state.error}</FormMessage> : null}
       {state.success ? <FormMessage tone="success">{state.success}</FormMessage> : null}
@@ -56,7 +65,9 @@ export function GoalForm({
 
       {suggestedGoal && !existing ? (
         <p className="bg-action-500/10 text-action-700 dark:text-action-400 rounded-lg px-3 py-2 text-sm">
-          前回のフィードバックから引き継いだ課題を入れてあります。変えても構いません。
+          {suggestionSource === 'feedback'
+            ? 'コーチの回答にあった「次回の課題」を入れてあります。変えても構いません。'
+            : '前回の日報の「次回取り組むこと」を入れてあります。変えても構いません。'}
         </p>
       ) : null}
 

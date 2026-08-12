@@ -80,5 +80,8 @@ psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/constraints_test.sql
 echo "--- 動画・クリップ・質問のテスト"
 psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/video_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
 
+echo "--- フィードバックの一周のテスト"
+psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/feedback_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
+
 echo
 echo "すべて通りました。"

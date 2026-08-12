@@ -378,6 +378,92 @@ export type FeedbackRequestRow = {
   deleted_at: string | null;
 };
 
+export type SkillCategoryRow = {
+  id: string;
+  team_id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type SkillRow = {
+  id: string;
+  team_id: string;
+  skill_category_id: string;
+  parent_id: string | null;
+  name: string;
+  description: string | null;
+  criteria: string | null;
+  level: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type FeedbackResponseRow = {
+  id: string;
+  team_id: string;
+  feedback_request_id: string;
+  responder_id: string;
+  conclusion: string;
+  positive_points: string | null;
+  improvement_points: string | null;
+  recommended_action: string | null;
+  technical_correction: string | null;
+  next_task: string | null;
+  related_skill_id: string | null;
+  reference_video_id: string | null;
+  requires_in_person_review: boolean;
+  suggests_team_share: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type FeedbackMessageType = 'comment' | 'follow_up_question' | 'system';
+
+export type FeedbackMessageRow = {
+  id: string;
+  team_id: string;
+  feedback_request_id: string;
+  sender_id: string;
+  message_type: FeedbackMessageType;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type ShareRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export type FeedbackShareRequestRow = {
+  id: string;
+  team_id: string;
+  feedback_request_id: string;
+  requested_by: string;
+  target_visibility: 'selected_members' | 'team';
+  status: ShareRequestStatus;
+  responded_at: string | null;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FeedbackStatusHistoryRow = {
+  id: string;
+  team_id: string;
+  feedback_request_id: string;
+  from_status: FeedbackStatus | null;
+  to_status: FeedbackStatus;
+  changed_by: string | null;
+  note: string | null;
+  created_at: string;
+};
+
 export type ImportSessionRow = {
   id: string;
   team_id: string;
@@ -616,6 +702,27 @@ export type Database = {
         FeedbackRequestRow,
         Exclude<keyof FeedbackRequestRow, 'team_id' | 'requester_id' | 'question'>
       >;
+      feedback_responses: TableShape<
+        FeedbackResponseRow,
+        Exclude<keyof FeedbackResponseRow, 'team_id' | 'feedback_request_id' | 'responder_id' | 'conclusion'>
+      >;
+      feedback_messages: TableShape<
+        FeedbackMessageRow,
+        Exclude<keyof FeedbackMessageRow, 'team_id' | 'feedback_request_id' | 'sender_id' | 'body'>
+      >;
+      feedback_share_requests: TableShape<
+        FeedbackShareRequestRow,
+        Exclude<
+          keyof FeedbackShareRequestRow,
+          'team_id' | 'feedback_request_id' | 'requested_by' | 'target_visibility'
+        >
+      >;
+      feedback_status_histories: TableShape<
+        FeedbackStatusHistoryRow,
+        Exclude<keyof FeedbackStatusHistoryRow, 'team_id' | 'feedback_request_id' | 'to_status'>
+      >;
+      skill_categories: TableShape<SkillCategoryRow, Exclude<keyof SkillCategoryRow, 'team_id' | 'name'>>;
+      skills: TableShape<SkillRow, Exclude<keyof SkillRow, 'team_id' | 'skill_category_id' | 'name'>>;
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
