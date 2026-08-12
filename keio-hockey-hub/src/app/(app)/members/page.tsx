@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Card, EmptyState } from '@/components/ui/card';
 import { listMembers } from '@/features/members/queries';
-import { can, requireSession } from '@/lib/auth/session';
+import { can, isStaff, requireSession } from '@/lib/auth/session';
 import { ROLE_LABELS } from '@/lib/auth/permissions';
 import { MEMBER_STATUS_LABELS, POSITION_LABELS } from '@/lib/labels';
 
@@ -18,6 +18,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   const members = await listMembers(session.teamId, includeInactive);
   const canImport = can(session, 'import.execute');
   const isAdmin = session.role === 'system_admin';
+  const isStaffMember = isStaff(session);
 
   return (
     <div className="space-y-4">
@@ -26,11 +27,18 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
           <h1 className="text-xl font-bold">名簿</h1>
           <p className="mt-1 text-sm text-[--color-muted]">{members.length} 名</p>
         </div>
-        {canImport ? (
-          <Link href="/admin/import" className="text-keio-700 dark:text-keio-300 text-sm underline">
-            データ移行
-          </Link>
-        ) : null}
+        <span className="flex gap-3">
+          {isStaffMember ? (
+            <Link href="/admin/invitations" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              招待
+            </Link>
+          ) : null}
+          {canImport ? (
+            <Link href="/admin/import" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              データ移行
+            </Link>
+          ) : null}
+        </span>
       </header>
 
       <p className="text-sm">
@@ -100,6 +108,11 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
 
       <p className="text-xs text-[--color-muted]">
         「未ログイン」は、移行で登録したがまだアカウントを作っていない選手です。
+        {isStaffMember ? (
+          <Link href="/admin/invitations" className="ml-1 underline">
+            招待リンクを渡す
+          </Link>
+        ) : null}
       </p>
 
       {isAdmin ? (

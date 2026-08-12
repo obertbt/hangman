@@ -23,6 +23,7 @@ const PROTECTED_PATHS = [
   '/measurements',
   '/notifications',
   '/trash',
+  '/admin/invitations',
   '/admin/skills',
   '/admin/export',
   '/admin/storage',
@@ -76,4 +77,23 @@ test('未ログインで CSV を取りに行っても中身が出ない', async 
 
   const body = await response.text();
   expect(body).not.toContain('氏名,役割');
+});
+
+/**
+ * 招待の受け取りは、まだログインしていない人が開く（Phase 1 の積み残し）。
+ * ログイン画面へ飛ばされず、かつ中身を漏らさないことを確かめる。
+ */
+test('招待リンクは未ログインでも開ける', async ({ page }) => {
+  // 形は正しいが存在しないトークン
+  await page.goto(`/invite/${'a'.repeat(43)}`);
+
+  await expect(page).not.toHaveURL(/\/login/);
+  await expect(page.getByRole('heading', { name: 'この招待リンクは使えません' })).toBeVisible();
+});
+
+test('形の違う招待リンクは、DB を引く前に断る', async ({ page }) => {
+  await page.goto('/invite/short');
+
+  await expect(page).not.toHaveURL(/\/login/);
+  await expect(page.getByRole('heading', { name: 'この招待リンクは使えません' })).toBeVisible();
 });

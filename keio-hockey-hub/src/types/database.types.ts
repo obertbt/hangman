@@ -748,7 +748,8 @@ export type TeamInvitationRow = {
   team_member_id: string | null;
   email: string;
   role_code: RoleCode;
-  token: string;
+  /** 生の値は保存しない。残るのは sha256（0021）。 */
+  token_hash: string;
   invited_by: string | null;
   expires_at: string;
   accepted_at: string | null;
@@ -997,6 +998,22 @@ export type Database = {
           restorable: boolean;
           note: string | null;
         }[];
+      };
+      /** 招待は、まだ部員でない人が呼ぶ（0021）。 */
+      find_invitation: {
+        Args: { p_token_hash: string };
+        Returns: {
+          team_name: string;
+          invited_name: string | null;
+          email: string;
+          role_code: RoleCode;
+          expires_at: string;
+          accepted_at: string | null;
+        }[];
+      };
+      accept_invitation: {
+        Args: { p_token_hash: string; p_user_id: string; p_full_name: string };
+        Returns: string;
       };
       restore_video: { Args: { p_video_id: string }; Returns: undefined };
       restore_video_clip: { Args: { p_clip_id: string }; Returns: undefined };
