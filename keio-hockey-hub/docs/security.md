@@ -18,6 +18,8 @@
 | 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに  | ポリシー定義         |
 | 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる   | `upload_test.sql`    |
 | 他人の動画を消せない                   | `soft_delete_video` の中で権限確認   | `upload_test.sql`    |
+| 自分でスキルを承認できない             | `app.validate_player_skill()` トリガ | `skill_test.sql`     |
+| 他人の名前で通知を送れない             | RLS `notifications_insert`           | `skill_test.sql`     |
 
 ## 2. 二重に守る
 
@@ -94,19 +96,19 @@ function safeNextPath(next: FormDataEntryValue | null): string {
 - key のチームを検算してから URL を発行する
 - MIME と容量と長さをサーバー側で確認してから Presigned URL を出す
 - 「アップロードが完了した」というブラウザの申告を信用せず、R2 の実物を見てから確定する
-- 削除は `soft_delete_video` を通す（理由は10章）
+- 削除は `soft_delete_video` を通す（理由は11章）
 
 ## 7. 監査ログ（63章）
 
-| 記録する操作                                 | 状態        |
-| -------------------------------------------- | ----------- |
-| Import 実行 / Import 取り消し                | ✅ 実装済み |
-| Role 変更 / Permission 変更                  | ⬜ Phase 9  |
-| スキル承認                                   | ⬜ Phase 8  |
-| 動画の削除（`soft_delete_video` の中で記録） | ✅ 実装済み |
-| 動画アップロード / 公開範囲変更 / 共有承認   | ⬜ Phase 9  |
-| フィードバック回答                           | ⬜ Phase 9  |
-| 容量設定変更 / R2 物理削除                   | ⬜ Phase 9  |
+| 記録する操作                                  | 状態        |
+| --------------------------------------------- | ----------- |
+| Import 実行 / Import 取り消し                 | ✅ 実装済み |
+| Role 変更 / Permission 変更                   | ⬜ Phase 9  |
+| スキル承認（`skill_status_histories` に履歴） | ✅ 実装済み |
+| 動画の削除（`soft_delete_video` の中で記録）  | ✅ 実装済み |
+| 動画アップロード / 公開範囲変更 / 共有承認    | ⬜ Phase 9  |
+| フィードバック回答                            | ⬜ Phase 9  |
+| 容量設定変更 / R2 物理削除                    | ⬜ Phase 9  |
 
 **秘密鍵や署名付き URL そのものはログに残しません。**
 残すのは「誰が・いつ・何に対して・何をしたか」だけです。
@@ -215,7 +217,56 @@ or app.has_permission('storage.manage')
 `video.view_team` のように既定で全員が持つ権限は、
 単独の条件として書くと、その `or` から先が全部無意味になります。
 
-## 10. RLS のよくある落とし穴
+## 10. 通知が1件も作られていなかった（Phase 8 で見つかった穴）
+
+`notifications` と `notification_targets` は RLS を有効にしてあるのに、
+**INSERT のポリシーが1つもありませんでした**。
+
+RLS は「ポリシーが無ければ拒否」なので、
+Phase 6 で作った通知の仕組みは、実際には1件も動いていませんでした。
+
+### なぜ気付けなかったか
+
+アプリ側が通知の失敗を握りつぶしていたためです。
+
+```ts
+try {
+  const { data: notification } = await supabase.from('notifications').insert({...});
+  if (notification) { /* 宛先を入れる */ }
+} catch {
+  // 通知は本筋ではない。落ちても回答は成立させる。
+}
+```
+
+supabase-js は例外を投げず `{ error }` を返します。
+`catch` には入らず、`notification` が `null` になるだけなので、
+`if` を静かに素通りして「何も起きない」で終わっていました。
+
+「落ちても本筋を止めない」という判断は正しいのですが、
+**「何も言わない」は別の話**です。いまは `console.warn` に残しています。
+
+### 対処（0015_notification_insert.sql）
+
+通知は「自分のチームの人へ、自分の名前で送る」ものに限りました。
+
+```sql
+create policy notifications_insert on public.notifications
+  for insert to authenticated
+  with check (app.is_team_member(team_id) and created_by = app.current_profile_id());
+```
+
+`created_by` を現在の利用者に固定しているので、差出人は偽れません。
+送ったあとの書き換えと削除は権限ごと剥がしています。
+
+### 教訓
+
+**RLS を有効にした表には、必要な操作のぶんだけポリシーを書く。**
+`select` だけ書いて `insert` を忘れると、その機能は黙って動かなくなります。
+
+漏れるより安全側に倒れるのは良いことですが、
+**気付けない失敗は、無いのと同じ**です。
+
+## 11. RLS のよくある落とし穴
 
 ### 無限再帰
 
@@ -250,6 +301,54 @@ update videos set deleted_at = now() where id = $1;
 `visibility` を条件に含むポリシーがあるテーブルで
 公開範囲を絞る更新を書くときは、同じ形が要ります。
 
+### ポリシーの中から他の表を読むと、その表のポリシーも効く
+
+「自分が作った通知か」を素朴に書くと、こうなります。
+
+```sql
+with check (
+  exists (select 1 from public.notifications n
+          where n.id = notification_targets.notification_id
+            and n.created_by = app.current_profile_id())
+)
+```
+
+これは通りません。`notifications` の SELECT ポリシーは
+「自分が宛先の通知だけ見える」なので、
+**宛先を入れる前の通知は、作った本人にも見えない**からです。
+永久に条件を満たせません。
+
+判定は `security definer` の関数に逃がします（`app.owns_notification()`）。
+無限再帰を避けるために `app.*` を使うのと同じ理由です。
+
+### 「本人 or 管理者」と書くと、本人が管理者になる
+
+`player_skills` の更新ポリシーはこうでした。
+
+```sql
+using (app.has_permission(team_id, 'skill.review') or app.is_own_member(team_member_id))
+```
+
+一見よさそうですが、これは**選手が自分の到達状況を `approved` にできる**と
+言っています。スキル承認はこのシステムで唯一「他人に認めてもらう」記録なので、
+自分で書けるなら意味がありません。
+
+「本人もこの行を触れる」と「本人がどの列でも好きに書ける」は別です。
+**どの値へ動かすかで、要る権限が変わる**場合は、
+行単位のポリシーだけでは表現できません。トリガで守ります（0014）。
+
+```sql
+if new.status = 'approved' and not v_was_approved then
+  if not app.has_permission(new.team_id, 'skill.review') then
+    raise exception 'スキルを承認できるのは審査担当だけです';
+  end if;
+  new.approved_at := now();
+  new.approved_by := app.current_profile_id();
+end if;
+```
+
+承認者と時刻もトリガが入れます。アプリに書かせると、書き忘れや詐称の余地が残ります。
+
 ### 新しいテーブルを足したとき
 
 `0010_grants.sql` で `alter default privileges` を設定していますが、
@@ -257,14 +356,15 @@ update videos set deleted_at = now() where id = $1;
 テーブルを足したら必ず次を行ってください。
 
 1. `alter table ... enable row level security;`
-2. ポリシーを書く
-3. **他のテーブルを指す列があれば、参照先のチームが一致するかをトリガで確かめる**（上記の穴）
-4. `rls_test.sql` か `video_test.sql` に確認を足す
+2. **使う操作のぶんだけ**ポリシーを書く（select だけ書いて insert を忘れない）
+3. **他のテーブルを指す列があれば、参照先のチームが一致するかをトリガで確かめる**（8章の穴）
+4. 状態によって要る権限が変わるなら、トリガで守る（11章の穴）
+5. `rls_test.sql` などに確認を足す。**書けることも書けないことも**確かめる
 
 RLS を有効にしてポリシーを書かないと、そのテーブルは**誰からも見えなくなります**
 （安全側に倒れるので、漏れるよりはましです）。
 
-## 11. 確認のしかた
+## 12. 確認のしかた
 
 ```bash
 pnpm db:test    # RLS と制約

@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AlertTriangle, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
+import { AlertTriangle, Award, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { getCoachDashboard, getPlayerDashboard } from '@/features/dashboard/queries';
 import { pendingActions, todayHeadline } from '@/features/dashboard/lib/pending-actions';
+import { ProgressBar } from '@/features/skills/components/progress-bar';
 import { isStaff, requireSession } from '@/lib/auth/session';
 import { formatDateLabel, formatTimeLabel } from '@/lib/datetime';
 import { EVENT_TYPE_LABELS } from '@/lib/labels';
@@ -78,6 +79,25 @@ async function PlayerToday() {
           <RecordLink href="/report" label="日報" done={data.todayState.hasReport} />
           <RecordLink href="/training" label="トレーニング" done={data.todayState.hasTraining} />
         </ul>
+      </Card>
+
+      {/* 31章: 積み上がったものが見えることが、続ける支えになる */}
+      <Card>
+        <CardHeader
+          title="スキルの到達度"
+          icon={<Award size={16} aria-hidden />}
+          action={
+            <Link href="/skills" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              一覧
+            </Link>
+          }
+        />
+        <ProgressBar
+          percent={data.skillProgress.percent}
+          approved={data.skillProgress.approved}
+          total={data.skillProgress.total}
+          label="スキルの到達度"
+        />
       </Card>
 
       <Card>
@@ -194,6 +214,24 @@ async function CoachToday() {
               </span>
             ) : null}
           </p>
+        )}
+      </Card>
+
+      {/* 32章: スキル申請も、放っておくと選手を待たせる */}
+      <Card>
+        <CardHeader
+          title="スキル申請"
+          icon={<Award size={16} aria-hidden />}
+          action={
+            <Link href="/skills/applications" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              一覧
+            </Link>
+          }
+        />
+        {data.awaitingSkillCount === 0 ? (
+          <EmptyState>審査待ちの申請はありません。</EmptyState>
+        ) : (
+          <p className="text-sm">審査待ち {data.awaitingSkillCount} 件</p>
         )}
       </Card>
 

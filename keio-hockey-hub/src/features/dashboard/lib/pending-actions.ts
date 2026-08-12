@@ -7,7 +7,8 @@ import type { EventType } from '@/types/database.types';
  * 画面に業務ロジックを書かないため、判定はここに閉じ込めて単体テストで守る。
  */
 
-export type ActionKey = 'condition' | 'goal' | 'report' | 'training' | 'feedback_unread' | 'feedback_pending';
+export type ActionKey =
+  'condition' | 'goal' | 'report' | 'training' | 'feedback_unread' | 'feedback_pending' | 'skill_sent_back';
 
 export interface PendingAction {
   key: ActionKey;
@@ -38,6 +39,8 @@ export interface TodayState {
   unreadFeedbackCount: number;
   /** 選手が出した質問のうち、まだ回答が来ていない数。 */
   waitingFeedbackCount: number;
+  /** コーチから差し戻されて、まだ出し直していないスキル申請の数（32章）。 */
+  sentBackSkillCount?: number;
 }
 
 /** 記録を求めるイベントかどうか。オフやミーティングでは日報を迫らない。 */
@@ -132,6 +135,17 @@ export function pendingActions(state: TodayState): PendingAction[] {
       label: `動画フィードバックを確認する（${state.unreadFeedbackCount}件）`,
       href: '/feedback',
       priority: 25,
+    });
+  }
+
+  // 差し戻された申請は、放っておくと止まったままになる。
+  // コーチは返事をして待っているので、日報より前に出す。
+  if ((state.sentBackSkillCount ?? 0) > 0) {
+    actions.push({
+      key: 'skill_sent_back',
+      label: `スキル申請に根拠を足す（${state.sentBackSkillCount}件）`,
+      href: '/skills/applications',
+      priority: 27,
     });
   }
 

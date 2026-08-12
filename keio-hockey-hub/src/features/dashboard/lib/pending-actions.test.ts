@@ -146,3 +146,35 @@ describe('試合の日', () => {
     expect(actions).toEqual([]);
   });
 });
+
+describe('差し戻されたスキル申請（32章）', () => {
+  it('差し戻されていたら、やることに出す', () => {
+    const actions = pendingActions(state({ sentBackSkillCount: 2 }));
+    const target = actions.find((action) => action.key === 'skill_sent_back');
+
+    expect(target?.label).toBe('スキル申請に根拠を足す（2件）');
+    expect(target?.href).toBe('/skills/applications');
+  });
+
+  it('0件なら出さない', () => {
+    const actions = pendingActions(state({ sentBackSkillCount: 0 }));
+    expect(actions.map((action) => action.key)).not.toContain('skill_sent_back');
+  });
+
+  it('項目が無くても落ちない（Phase 8 より前のデータ）', () => {
+    const actions = pendingActions(state({ sentBackSkillCount: undefined }));
+    expect(actions.map((action) => action.key)).not.toContain('skill_sent_back');
+  });
+
+  it('日報より先に出す。コーチが返事をして待っているため', () => {
+    const actions = pendingActions(state({ sentBackSkillCount: 1 }));
+    const keys = actions.map((action) => action.key);
+
+    expect(keys.indexOf('skill_sent_back')).toBeLessThan(keys.indexOf('report'));
+  });
+
+  it('予定が無い日でも出す。スキルは練習の有無と関係ない', () => {
+    const actions = pendingActions(state({ events: [], sentBackSkillCount: 1 }));
+    expect(actions.map((action) => action.key)).toContain('skill_sent_back');
+  });
+});

@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
+import { MAIN_NAV } from '@/components/layout/nav-links';
 import { ROLE_LABELS, PERMISSION_LABELS, PERMISSIONS } from '@/lib/auth/permissions';
 import { can, requireSession } from '@/lib/auth/session';
 import { env, limits } from '@/lib/env';
@@ -14,6 +16,29 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">設定</h1>
+
+      {/* 下部ナビゲーションに入りきらないものは、ここから辿れるようにする */}
+      <Card className="md:hidden">
+        <CardHeader title="ほかの画面" />
+        <ul className="space-y-2">
+          {MAIN_NAV.filter((link) => !link.bottom && (!link.permission || can(session, link.permission))).map(
+            (link) => {
+              const Icon = link.icon;
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="flex min-h-12 items-center gap-3 rounded-lg border border-[--color-border] px-3 text-sm"
+                  >
+                    <Icon size={18} aria-hidden />
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            },
+          )}
+        </ul>
+      </Card>
 
       <Card>
         <CardHeader title="あなたの情報" />

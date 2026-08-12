@@ -131,6 +131,20 @@ export default async function FeedbackDetailPage({ params }: { params: Promise<{
                   </div>
                 ) : null}
 
+                {/* 32章: 回答がスキルに紐づいていたら、そのまま申請へ進めるようにする。
+                    ここが「フィードバック → スキル承認」のつなぎ目。 */}
+                {response.related_skill_id && actor === 'requester' ? (
+                  <div className="mt-3 rounded-lg border border-[--color-border] px-3 py-2">
+                    <p className="text-xs text-[--color-muted]">この回答はスキルに結び付いています</p>
+                    <Link
+                      href={`/skills/apply/${response.related_skill_id}`}
+                      className="text-keio-700 dark:text-keio-300 mt-1 inline-block text-sm underline"
+                    >
+                      この回答を根拠にスキルを申請する
+                    </Link>
+                  </div>
+                ) : null}
+
                 {response.requires_in_person_review ? (
                   <p className="mt-2 text-xs text-[--color-muted]">※ 対面でも確認したい、とのことです</p>
                 ) : null}

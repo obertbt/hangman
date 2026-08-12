@@ -134,39 +134,101 @@ sequenceDiagram
 
 ## 4. スキル承認
 
+2つの状態が動きます。混同しないように分けて書きます。
+
+| 対象                        | 何を表すか                             | 数              |
+| --------------------------- | -------------------------------------- | --------------- |
+| `skill_applications.status` | その「申請」がいまどこにあるか         | 何度でも出せる  |
+| `player_skills.status`      | その選手がそのスキルにどこまで届いたか | スキルごとに1つ |
+
+### 申請の状態
+
+```mermaid
+stateDiagram-v2
+  [*] --> submitted: 申請する
+  submitted --> reviewing: コーチが審査を始める
+  submitted --> approved: 承認
+  submitted --> draft: 根拠を足してもらう
+  submitted --> rejected: 今回は見送る
+  reviewing --> approved
+  reviewing --> draft
+  reviewing --> rejected
+  draft --> submitted: 出し直す
+  draft --> withdrawn: 取り下げる
+  submitted --> withdrawn
+  approved --> [*]
+  rejected --> [*]
+  withdrawn --> [*]
+```
+
+**差し戻し（`needs_more`）は不合格ではありません。**
+申請は選手の手元（`draft`）へ戻り、根拠を足して出し直せます。
+一度も出していない下書きと見分けるため、
+画面では「審査の記録があるか」で「差し戻し」と表示を変えています。
+
+### 到達状況の動き
+
+申請を動かすと、到達状況も対で動きます。
+対応表は `features/skills/lib/state.ts` の1か所に置いてあります。
+
 ```mermaid
 stateDiagram-v2
   [*] --> not_started: 未着手
-  not_started --> applied: 申請中
-  applied --> feedback: フィードバック中
-  applied --> approved: 承認済
-  feedback --> applied: 再申請
-  feedback --> approved
+  not_started --> applied: 申請する
+  applied --> approved: 承認
+  applied --> feedback: 差し戻し
+  applied --> not_started: 見送り・取り下げ
+  feedback --> applied: 出し直す
   approved --> [*]
 ```
+
+`approved` からは戻しません。
+一度「できる」と言われたものが黙って消えると、選手は記録を信じなくなります。
+誤って承認した場合は、審査担当だけが理由を添えて直せます（0014）。
+
+### 全体の流れ
 
 ```mermaid
 flowchart TD
   skill["スキル階層<br/>大分類 → 中目標 → 小目標"] --> pick["選手が小目標を選ぶ"]
-  pick --> evidence["根拠を添える"]
+  pick --> evidence["根拠を添える（0件でも出せる）"]
   evidence --> e1["YouTube 仮想クリップ"]
   evidence --> e2["R2 短編動画"]
   evidence --> e3["回答済みフィードバック"]
-  evidence --> e4["日報の添付"]
-  e1 --> apply["申請"]
+  evidence --> e4["ことばでの補足"]
+  e1 --> apply["申請 → コーチへ通知"]
   e2 --> apply
   e3 --> apply
   e4 --> apply
   apply --> review{"コーチが審査"}
-  review -->|"承認"| approved["player_skills = approved<br/>履歴に残す"]
-  review -->|"もう少し"| more["needs_more<br/>何が足りないかを伝える"]
-  review -->|"却下"| rejected["rejected"]
+  review -->|"承認"| approved["player_skills = approved<br/>承認者と時刻はトリガが入れる<br/>履歴に残る"]
+  review -->|"根拠を足してもらう"| more["draft へ戻す<br/>何が足りないかを必ず書く"]
+  review -->|"今回は見送る"| rejected["rejected<br/>理由を必ず書く"]
   more --> evidence
 ```
+
+守っていること:
+
+| 守ること                           | どこで                                       |
+| ---------------------------------- | -------------------------------------------- |
+| 自分で自分を承認できない           | `app.validate_player_skill()` トリガ（0014） |
+| 審査担当が自分の申請を審査できない | 本人であることを優先して立場を決める         |
+| 差し戻し・見送りには理由が要る     | Server Action で確認                         |
+| 他人の動画・質問を根拠にできない   | 候補は自分のものだけ + トリガ（0014）        |
+| 承認者と時刻を詐称できない         | トリガが入れる。アプリからは書かせない       |
+| 履歴を書き換えられない             | `skill_status_histories` の権限を剥がす      |
 
 コーチの回答から `related_skill_id` を指定できるので、
 「この動画をスキル申請に使えますか」という質問から
 そのまま申請につなげられます。
+回答画面に「この回答を根拠にスキルを申請する」が出ます。
+
+### 進捗の数え方
+
+**数えるのは小目標（末端）だけです。**
+中目標は小目標の入れ物なので、一緒に数えると
+「中目標を承認しただけで進捗が跳ねる」ことになります。
+子を持たない中目標は、それ自体が到達点なので数えます。
 
 ## 5. データ移行
 

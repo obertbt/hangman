@@ -343,6 +343,15 @@ export type FeedbackStatus =
   | 'closed'
   | 'withdrawn';
 
+export type PlayerSkillStatus = 'not_started' | 'applied' | 'feedback' | 'approved';
+
+export type SkillApplicationStatus =
+  'draft' | 'submitted' | 'reviewing' | 'approved' | 'rejected' | 'withdrawn';
+
+export type SkillReviewDecision = 'approved' | 'rejected' | 'needs_more';
+
+export type SkillEvidenceType = 'video' | 'video_clip' | 'feedback_request' | 'file' | 'note';
+
 export type QuestionType =
   | 'judgement'
   | 'play_choice'
@@ -453,6 +462,68 @@ export type SkillRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+};
+
+export type PlayerSkillRow = {
+  id: string;
+  team_id: string;
+  team_member_id: string;
+  skill_id: string;
+  status: PlayerSkillStatus;
+  approved_at: string | null;
+  approved_by: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type SkillApplicationRow = {
+  id: string;
+  team_id: string;
+  team_member_id: string;
+  skill_id: string;
+  comment: string | null;
+  status: SkillApplicationStatus;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type SkillApplicationItemRow = {
+  id: string;
+  team_id: string;
+  skill_application_id: string;
+  item_type: SkillEvidenceType;
+  video_id: string | null;
+  video_clip_id: string | null;
+  feedback_request_id: string | null;
+  file_id: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type SkillReviewRow = {
+  id: string;
+  team_id: string;
+  skill_application_id: string;
+  reviewer_id: string;
+  decision: SkillReviewDecision;
+  comment: string | null;
+  created_at: string;
+};
+
+export type SkillStatusHistoryRow = {
+  id: string;
+  team_id: string;
+  player_skill_id: string;
+  from_status: string | null;
+  to_status: string;
+  changed_by: string | null;
+  reason: string | null;
+  created_at: string;
 };
 
 export type FeedbackResponseRow = {
@@ -774,6 +845,26 @@ export type Database = {
       >;
       skill_categories: TableShape<SkillCategoryRow, Exclude<keyof SkillCategoryRow, 'team_id' | 'name'>>;
       skills: TableShape<SkillRow, Exclude<keyof SkillRow, 'team_id' | 'skill_category_id' | 'name'>>;
+      player_skills: TableShape<
+        PlayerSkillRow,
+        Exclude<keyof PlayerSkillRow, 'team_id' | 'team_member_id' | 'skill_id'>
+      >;
+      skill_applications: TableShape<
+        SkillApplicationRow,
+        Exclude<keyof SkillApplicationRow, 'team_id' | 'team_member_id' | 'skill_id'>
+      >;
+      skill_application_items: TableShape<
+        SkillApplicationItemRow,
+        Exclude<keyof SkillApplicationItemRow, 'team_id' | 'skill_application_id' | 'item_type'>
+      >;
+      skill_reviews: TableShape<
+        SkillReviewRow,
+        Exclude<keyof SkillReviewRow, 'team_id' | 'skill_application_id' | 'reviewer_id' | 'decision'>
+      >;
+      skill_status_histories: TableShape<
+        SkillStatusHistoryRow,
+        Exclude<keyof SkillStatusHistoryRow, 'team_id' | 'player_skill_id' | 'to_status'>
+      >;
       files: TableShape<
         FileRow,
         Exclude<

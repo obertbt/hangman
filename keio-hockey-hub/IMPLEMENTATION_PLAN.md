@@ -147,28 +147,52 @@ LINE / Discord / Strava / Google Fit / ネイティブアプリ /
 | 5     | YouTube 動画登録・一覧・Player・仮想クリップ・質問投稿                            | ✅   |
 | 6     | コーチ回答・担当設定・状態管理・再質問・選手確認・通知                            | ✅   |
 | 7     | R2 Upload Session・Presigned PUT・Direct Upload・検証・Signed GET                 | ✅   |
-| 8     | スキル階層・申請・動画添付・Feedback連携・承認・履歴                              | 次   |
-| 9     | Storage集計・Import rollback拡張・CSV Export・Audit Log・測定・バックアップ       |      |
+| 8     | スキル階層・申請・動画添付・Feedback連携・承認・履歴                              | ✅   |
+| 9     | Storage集計・Import rollback拡張・CSV Export・Audit Log・測定・バックアップ       | 次   |
 
 Phase 6 以降のテーブルと RLS は**すでに作成済み**。
 残っているのは画面と Server Action。
 
-### 次にやること（Phase 8: スキル）
+### 次にやること（Phase 9: 運用管理）
 
-循環の最後の輪。コーチの回答に書いた `related_skill_id` を、
-スキル申請につなげる。
+循環そのものは Phase 8 で閉じた。Phase 9 は「長く自分たちで運用できるか」を作る。
 
-1. スキル階層（大分類 → 中目標 → 小目標）の一覧と、いまの進捗
-2. スキル申請（根拠として動画・クリップ・フィードバックを添える）
-3. コーチの審査と承認、その履歴
-4. フィードバックの回答画面から、そのまま申請へ進む導線
+1. Storage 使用量の集計と、70% / 85% / 95% の警告（59章）
+2. `file_deletion_jobs` を実際に実行する仕組みと、一時アップロードの掃除
+3. 監査ログの閲覧画面
+4. 通知の一覧画面（いまは記録するだけで、まとめて見る場所が無い）
+5. 測定結果の入力と推移表示
+6. CSV エクスポートとバックアップ手順
 
-テーブル（`skill_categories` / `skills` / `player_skills` /
-`skill_applications` / `skill_reviews`）と RLS は 0006 で作成済み。
-残っているのは画面と Server Action。
+テーブル（`storage_usage_snapshots` / `audit_logs` / `notifications` /
+`measurement_*`）と RLS は 0007 で作成済み。
 
-Phase 6 で循環は一周し、Phase 7 で「短い動画」が加わった。
-Phase 8 は「その積み重ねが形として残る」ところを作る。
+### Phase 8 で分かったこと
+
+- **RLS のポリシーを書き忘れた表は、黙って動かなくなる**。
+  `notifications` と `notification_targets` は RLS を有効にしてあるのに
+  INSERT のポリシーが1つも無く、Phase 6 以降の通知は**1件も作られていなかった**。
+  気付けなかったのは、アプリ側が通知の失敗を握りつぶしていたため。
+  supabase-js は例外を投げず `{ error }` を返すので、try/catch では拾えない
+  （`0015_notification_insert.sql`）
+- **失敗を握りつぶすなら、せめてログに残す**。
+  「落ちても本筋は止めない」は正しいが、「何も言わない」は違う。
+  通知の失敗は `console.warn` に出すようにした
+- **ポリシーの中から他の表を select すると、その表の SELECT ポリシーも効く**。
+  「自分が作った通知か」を素朴に書いたら、宛先を入れる前の通知は自分にも見えず、
+  いつまでも条件を満たせなかった。判定は `security definer` の関数に逃がす
+  （0002 の `app.*` と同じ理由）
+- **「自分で自分を承認できる」は、RLS を素直に書くと簡単に生まれる**。
+  `player_skills` の更新ポリシーが `本人 or 審査担当` だったため、
+  選手が自分の到達状況を `approved` にできた。スキル承認はこのシステムで唯一
+  「他人に認めてもらう」記録なので、自分で書けるなら意味がない（`0014_skill_guards.sql`）
+- **DB テストは、失敗しても失敗と言わないことがある**。
+  `psql | grep` の終了コードは grep のものになるため、
+  SQL が ERROR で落ちても「すべて通りました」と出ていた。
+  出力を見て自分で判定するようにした（`scripts/run-db-tests.sh`）
+- 同じトランザクションの中では `now()` が進まない。
+  履歴の「最後の1件」を `created_at` の並び順で取ろうとすると当てにならない。
+  「どこからどこへ動いたか」で確かめる
 
 ### Phase 7 で分かったこと
 

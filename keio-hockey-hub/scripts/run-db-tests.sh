@@ -56,6 +56,23 @@ run() {
   psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -q -f "$1"
 }
 
+FAILED=0
+
+# テスト本体。ok: の行だけを見せ、ERROR が出たら最後に落とす。
+#
+# psql は途中で ERROR が出ても終了コードを返さないことがある
+# （\set ON_ERROR_STOP を付けても、grep を挟むと後ろの終了コードになる）ため、
+# 出力を見て自分で判定する。
+run_test() {
+  local label="$1" file="$2" output
+  echo "--- $label"
+  output="$(psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f "$file" 2>&1 | grep -E "(NOTICE|ERROR|FATAL)" || true)"
+  echo "$output"
+  if grep -qE "(ERROR|FATAL)" <<<"$output"; then
+    FAILED=1
+  fi
+}
+
 # Supabase が用意する部分（auth スキーマなど）の最小スタブ
 if [[ -z "${DATABASE_URL:-}" ]]; then
   echo "--- Supabase スタブ"
@@ -71,20 +88,16 @@ done
 echo "--- seed"
 run supabase/seed.sql
 
-echo "--- RLS テスト"
-psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/rls_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
-
-echo "--- 制約テスト"
-psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/constraints_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
-
-echo "--- 動画・クリップ・質問のテスト"
-psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/video_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
-
-echo "--- アップロードのテスト"
-psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/upload_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
-
-echo "--- フィードバックの一周のテスト"
-psql "${PSQL_ARGS[@]}" -v ON_ERROR_STOP=1 -f supabase/tests/feedback_test.sql 2>&1 | grep -E "^(psql.*)?(NOTICE|ERROR)" || true
+run_test "RLS テスト" supabase/tests/rls_test.sql
+run_test "制約テスト" supabase/tests/constraints_test.sql
+run_test "動画・クリップ・質問のテスト" supabase/tests/video_test.sql
+run_test "アップロードのテスト" supabase/tests/upload_test.sql
+run_test "フィードバックの一周のテスト" supabase/tests/feedback_test.sql
+run_test "スキルの申請と承認のテスト" supabase/tests/skill_test.sql
 
 echo
+if [[ "$FAILED" != "0" ]]; then
+  echo "失敗しました。上の ERROR を確認してください。"
+  exit 1
+fi
 echo "すべて通りました。"

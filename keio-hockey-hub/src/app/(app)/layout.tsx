@@ -13,6 +13,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // ただし出さないことは権限確認ではない。実際の判定はページ側と RLS で行う。
   const links = MAIN_NAV.filter((link) => !link.permission || can(session, link.permission));
 
+  // スマートフォンは幅が足りないので、毎日通る道だけを下に出す。
+  // 出さなかったものは設定から辿れる。
+  const bottomLinks = links.filter((link) => link.bottom);
+
   return (
     <div className="flex min-h-dvh">
       <SideNav links={links} appName={env.NEXT_PUBLIC_APP_NAME} />
@@ -35,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      <BottomNav links={links} />
+      <BottomNav links={bottomLinks} />
     </div>
   );
 }

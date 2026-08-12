@@ -81,8 +81,24 @@ export const FEEDBACK_STATUS_LABELS = {
 export const SKILL_STATUS_LABELS = {
   not_started: '未着手',
   applied: '申請中',
-  feedback: 'フィードバック中',
+  feedback: '差し戻し中',
   approved: '承認済',
+} as const;
+
+/** 32章。申請そのものの状態。到達状況（SKILL_STATUS_LABELS）とは別。 */
+export const SKILL_APPLICATION_STATUS_LABELS = {
+  draft: '下書き',
+  submitted: '審査待ち',
+  reviewing: '審査中',
+  approved: '承認',
+  rejected: '見送り',
+  withdrawn: '取り下げ',
+} as const;
+
+export const SKILL_REVIEW_DECISION_LABELS = {
+  approved: '承認',
+  needs_more: '差し戻し',
+  rejected: '見送り',
 } as const;
 
 export const IMPORT_TYPE_LABELS: Record<ImportType, string> = {

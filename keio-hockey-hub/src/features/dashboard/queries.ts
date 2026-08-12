@@ -11,6 +11,8 @@ import {
 } from '@/features/timeline/queries';
 import { countUnreadAnswers, countWaitingQuestions, listAwaitingCoach } from '@/features/feedback/queries';
 import { isOverdue } from '@/features/feedback/lib/state';
+import { countAwaitingReview, countSentBack, getSkillOverview } from '@/features/skills/queries';
+import type { CategoryProgress } from '@/features/skills/lib/state';
 import type { EventRow, SeasonRow, WeekRow } from '@/types/database.types';
 
 import type { TodayState } from './lib/pending-actions';
@@ -33,6 +35,8 @@ export interface PlayerDashboardData {
   upcoming: EventRow[];
   todayState: TodayState;
   personalGoal: string | null;
+  /** スキルの到達度（31章）。積み上がったものを毎日見せる。 */
+  skillProgress: CategoryProgress;
 }
 
 /** 選手向け「今日」（11章）。 */
@@ -83,9 +87,12 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
   const goalRow = goalResult.data?.[0];
 
   // Phase 6: 未確認の回答と、回答待ちの質問の数
-  const [unreadFeedbackCount, waitingFeedbackCount] = await Promise.all([
+  // Phase 8: 差し戻されたスキル申請
+  const [unreadFeedbackCount, waitingFeedbackCount, sentBackSkillCount, skillOverview] = await Promise.all([
     countUnreadAnswers(session),
     countWaitingQuestions(session),
+    countSentBack(session),
+    getSkillOverview(session),
   ]);
 
   const todayState: TodayState = {
@@ -102,6 +109,7 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
     hasTraining: (trainingResult.data?.length ?? 0) > 0,
     unreadFeedbackCount,
     waitingFeedbackCount,
+    sentBackSkillCount,
   };
 
   return {
@@ -112,6 +120,7 @@ export async function getPlayerDashboard(session: AppSession): Promise<PlayerDas
     upcoming,
     todayState,
     personalGoal: goalRow?.goal ?? null,
+    skillProgress: skillOverview.total,
   };
 }
 
@@ -129,6 +138,8 @@ export interface CoachDashboardData {
   awaitingFeedbackCount: number;
   /** そのうち3日以上待たせているもの。 */
   overdueFeedbackCount: number;
+  /** 審査待ちのスキル申請（32章）。 */
+  awaitingSkillCount: number;
 }
 
 /** コーチ向け「今日」（12章）。 */
@@ -189,7 +200,10 @@ export async function getCoachDashboard(session: AppSession): Promise<CoachDashb
     }));
 
   // 12章: 未対応の質問を見落とさないようにする
-  const awaiting = await listAwaitingCoach(session);
+  const [awaiting, awaitingSkillCount] = await Promise.all([
+    listAwaitingCoach(session),
+    countAwaitingReview(session),
+  ]);
   const overdueFeedbackCount = awaiting.filter((item) =>
     isOverdue(item.request.status, item.request.submitted_at),
   ).length;
@@ -204,6 +218,7 @@ export async function getCoachDashboard(session: AppSession): Promise<CoachDashb
     concerningConditions,
     awaitingFeedbackCount: awaiting.length,
     overdueFeedbackCount,
+    awaitingSkillCount,
   };
 }
 
