@@ -276,6 +276,25 @@ export type TrainingRecordRow = {
   deleted_at: string | null;
 };
 
+export type TrainingExerciseRow = {
+  id: string;
+  team_id: string;
+  training_record_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type TrainingSetRow = {
+  id: string;
+  team_id: string;
+  training_exercise_id: string;
+  set_number: number;
+  weight_kg: number | null;
+  reps: number | null;
+  created_at: string;
+};
+
 export type ImportSessionRow = {
   id: string;
   team_id: string;
@@ -474,6 +493,14 @@ export type Database = {
       training_records: TableShape<
         TrainingRecordRow,
         Exclude<keyof TrainingRecordRow, 'team_id' | 'team_member_id' | 'performed_on' | 'training_type'>
+      >;
+      training_exercises: TableShape<
+        TrainingExerciseRow,
+        Exclude<keyof TrainingExerciseRow, 'team_id' | 'training_record_id' | 'name'>
+      >;
+      training_sets: TableShape<
+        TrainingSetRow,
+        Exclude<keyof TrainingSetRow, 'team_id' | 'training_exercise_id' | 'set_number'>
       >;
       import_sessions: TableShape<
         ImportSessionRow,

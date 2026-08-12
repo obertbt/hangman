@@ -7,7 +7,18 @@ import { expect, test } from '@playwright/test';
  * 権限そのものの確認は RLS テスト（supabase/tests/rls_test.sql）で行う。
  */
 
-const PROTECTED_PATHS = ['/today', '/schedule', '/members', '/settings', '/admin/import'];
+const PROTECTED_PATHS = [
+  '/today',
+  '/schedule',
+  '/members',
+  '/settings',
+  '/condition',
+  '/goal',
+  '/report',
+  '/training',
+  '/admin/import',
+  '/admin/submissions',
+];
 
 for (const path of PROTECTED_PATHS) {
   test(`未ログインで ${path} を開くとログイン画面へ送られる`, async ({ page }) => {

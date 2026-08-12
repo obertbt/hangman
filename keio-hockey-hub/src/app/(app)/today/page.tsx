@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AlertTriangle, CalendarDays, ChevronRight, Target } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, ChevronRight, Target } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -67,6 +67,17 @@ async function PlayerToday() {
             ))}
           </ul>
         )}
+      </Card>
+
+      {/* 「残っていること」が空でも、いつでも記録を開けるようにしておく。 */}
+      <Card>
+        <CardHeader title="記録する" />
+        <ul className="grid grid-cols-2 gap-2">
+          <RecordLink href="/condition" label="コンディション" done={data.todayState.hasCondition} />
+          <RecordLink href="/goal" label="今日の目標" done={data.todayState.hasGoal} />
+          <RecordLink href="/report" label="日報" done={data.todayState.hasReport} />
+          <RecordLink href="/training" label="トレーニング" done={data.todayState.hasTraining} />
+        </ul>
       </Card>
 
       <Card>
@@ -183,7 +194,15 @@ async function CoachToday() {
       </Card>
 
       <Card>
-        <CardHeader title="日報の提出状況" description={`在籍選手 ${data.activeMemberCount} 名`} />
+        <CardHeader
+          title="日報の提出状況"
+          description={`在籍選手 ${data.activeMemberCount} 名`}
+          action={
+            <Link href="/admin/submissions" className="text-keio-700 dark:text-keio-300 text-sm underline">
+              一覧
+            </Link>
+          }
+        />
         {data.missingReportNames.length === 0 ? (
           <EmptyState>未提出の選手はいません。</EmptyState>
         ) : (
@@ -214,6 +233,25 @@ async function CoachToday() {
         </Card>
       )}
     </>
+  );
+}
+
+/** 入力済みかどうかが一目で分かる入口。 */
+function RecordLink({ href, label, done }: { href: string; label: string; done: boolean }) {
+  return (
+    <li>
+      <Link
+        href={href}
+        className="flex min-h-12 items-center justify-between gap-1 rounded-lg border border-[--color-border] px-3 text-sm"
+      >
+        {label}
+        {done ? (
+          <Check size={16} className="text-emerald-600" aria-label="入力済み" />
+        ) : (
+          <ChevronRight size={16} className="text-[--color-muted]" aria-hidden />
+        )}
+      </Link>
+    </li>
   );
 }
 
