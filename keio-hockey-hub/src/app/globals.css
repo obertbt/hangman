@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+
+/*
+ * 配色の考え方:
+ *   慶應の伝統色に寄せた濃紺を基調にする。
+ *   強い色は「今やること」を示す時だけに使い、
+ *   画面を開いた瞬間に次の行動へ目が行くようにする（3章）。
+ */
+@theme {
+  --color-keio-50: #f2f5fa;
+  --color-keio-100: #e3e9f4;
+  --color-keio-200: #c7d3e8;
+  --color-keio-300: #9db1d4;
+  --color-keio-400: #6b87ba;
+  --color-keio-500: #4a66a0;
+  --color-keio-600: #3a5185;
+  --color-keio-700: #31446d;
+  --color-keio-800: #1f2c4a;
+  --color-keio-900: #16203a;
+  --color-keio-950: #0d1425;
+
+  /* 「今すぐやること」を示す唯一のアクセント */
+  --color-action-400: #f0a04b;
+  --color-action-500: #e08830;
+  --color-action-600: #c26f1f;
+  /* 白文字を載せる面用。AA（4.5:1）を満たす濃さ。 */
+  --color-action-700: #9c5714;
+
+  --font-sans:
+    ui-sans-serif, system-ui, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+}
+
+:root {
+  --background: var(--color-keio-50);
+  --surface: #ffffff;
+  --foreground: var(--color-keio-900);
+  --muted: #5b6880;
+  --border: var(--color-keio-200);
+  /* 下部ナビゲーションぶんの余白（モバイル） */
+  --bottom-nav-height: 4.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-keio-950);
+    --surface: #17203a;
+    --foreground: var(--color-keio-100);
+    --muted: #93a1bd;
+    --border: #2a3654;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  /* スマートフォンでの誤操作を減らす */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 入力欄の文字は 16px を下回らせない。iOS で拡大されてしまうため。 */
+input,
+select,
+textarea {
+  font-size: 16px;
+}

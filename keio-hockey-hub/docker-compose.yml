@@ -1,0 +1,28 @@
+# =============================================================
+# 開発・自前運用向けの構成。
+#
+# Supabase 本体はクラウド（supabase.com）を使う想定。
+# ここで動かすのは Next.js アプリだけ。
+#
+#   docker compose up --build
+#
+# 秘密情報は .env.local から実行時に渡す。イメージには焼き込まない。
+# =============================================================
+services:
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-慶應ホッケーハブ}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    env_file: .env.local
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

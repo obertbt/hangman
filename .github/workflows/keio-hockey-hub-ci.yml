@@ -1,0 +1,80 @@
+name: CI
+
+# keio-hockey-hub は同じリポジトリの中の1プロジェクトなので、
+# このディレクトリが変わった時だけ動かす。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'keio-hockey-hub/**'
+      - '.github/workflows/keio-hockey-hub-ci.yml'
+  pull_request:
+    paths:
+      - 'keio-hockey-hub/**'
+
+defaults:
+  run:
+    working-directory: keio-hockey-hub
+
+jobs:
+  app:
+    name: 型・Lint・単体テスト・ビルド
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: keio-hockey-hub/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 書式
+        run: pnpm format:check
+
+      - name: 型検査
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: 単体テスト
+        run: pnpm test
+
+      - name: ビルド
+        run: pnpm build
+
+      - name: E2E（ログイン不要ぶん）
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: E2E の結果を残す
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: keio-hockey-hub/playwright-report/
+          retention-days: 7
+
+  database:
+    name: Migration・RLS・制約テスト
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PostgreSQL を入れる
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-client-16
+
+      - name: Migration と RLS テスト
+        run: |
+          sudo chmod +x scripts/run-db-tests.sh
+          sudo -E env "PATH=$PATH" PGBIN=/usr/lib/postgresql/16/bin ./scripts/run-db-tests.sh
