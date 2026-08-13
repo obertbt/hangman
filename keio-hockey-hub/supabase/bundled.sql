@@ -1,13 +1,11 @@
 -- ==========================================================
 -- 自動生成: scripts/bundle-migrations.sh
--- 2026-08-13 00:59:37 時点の supabase/migrations/ をまとめたもの。
--- 直接編集しない。直すのは元の migration のほう。
+-- 直接編集しない。直すのは supabase/migrations/ のほう。
+-- 2026-08-13 時点の migration をすべてまとめたもの。
 -- ==========================================================
 
 
--- ==========================================================
--- 0001_core.sql
--- ==========================================================
+-- ---------- 0001_core.sql ----------
 -- =============================================================
 -- 0001_core.sql
 -- チーム / プロフィール / 所属 / ロール / 権限 / 設定 / 監査ログ
@@ -228,9 +226,7 @@ create index if not exists audit_logs_team_created_idx on public.audit_logs (tea
 create index if not exists audit_logs_target_idx on public.audit_logs (target_table, target_id);
 
 
--- ==========================================================
--- 0002_auth_helpers.sql
--- ==========================================================
+-- ---------- 0002_auth_helpers.sql ----------
 -- =============================================================
 -- 0002_auth_helpers.sql
 -- RLS から呼ぶ補助関数。
@@ -414,9 +410,7 @@ grant execute on function app.has_permission(uuid, text) to authenticated;
 grant execute on function app.owns_membership(uuid) to authenticated;
 
 
--- ==========================================================
--- 0003_timeline.sql
--- ==========================================================
+-- ---------- 0003_timeline.sql ----------
 -- =============================================================
 -- 0003_timeline.sql
 -- シーズン → 週 → イベント（6〜9章）
@@ -608,9 +602,7 @@ $$;
 grant execute on function app.week_for_date(uuid, date) to authenticated;
 
 
--- ==========================================================
--- 0004_daily.sql
--- ==========================================================
+-- ---------- 0004_daily.sql ----------
 -- =============================================================
 -- 0004_daily.sql
 -- 練習前コンディション / 個人目標 / 日報 / トレーニング記録
@@ -799,9 +791,7 @@ create table if not exists public.training_sets (
 );
 
 
--- ==========================================================
--- 0005_files_videos.sql
--- ==========================================================
+-- ---------- 0005_files_videos.sql ----------
 -- =============================================================
 -- 0005_files_videos.sql
 -- ファイル / アップロードセッション / 動画 / 仮想クリップ
@@ -1081,9 +1071,7 @@ create table if not exists public.storage_usage_snapshots (
 );
 
 
--- ==========================================================
--- 0006_feedback_skills.sql
--- ==========================================================
+-- ---------- 0006_feedback_skills.sql ----------
 -- =============================================================
 -- 0006_feedback_skills.sql
 -- 動画フィードバック（25〜29章, 54〜56章）とスキル（30〜32章）
@@ -1417,9 +1405,7 @@ alter table public.practice_goals
   foreign key (source_feedback_id) references public.feedback_requests(id) on delete set null;
 
 
--- ==========================================================
--- 0007_import_notifications.sql
--- ==========================================================
+-- ---------- 0007_import_notifications.sql ----------
 -- =============================================================
 -- 0007_import_notifications.sql
 -- Import Center（33〜50章）/ 通知（57章）/ 測定（64章）
@@ -1625,9 +1611,7 @@ create index if not exists measurement_results_member_idx
   on public.measurement_results (team_member_id);
 
 
--- ==========================================================
--- 0008_rls.sql
--- ==========================================================
+-- ---------- 0008_rls.sql ----------
 -- =============================================================
 -- 0008_rls.sql
 -- Row Level Security（62章）
@@ -2419,9 +2403,7 @@ create policy import_record_links_via_session on public.import_record_links
   );
 
 
--- ==========================================================
--- 0009_master_data.sql
--- ==========================================================
+-- ---------- 0009_master_data.sql ----------
 -- =============================================================
 -- 0009_master_data.sql
 -- ロールと権限のマスタ（13章）。
@@ -2486,9 +2468,7 @@ insert into public.role_permissions (role_code, permission_code) values
 on conflict do nothing;
 
 
--- ==========================================================
--- 0010_grants.sql
--- ==========================================================
+-- ---------- 0010_grants.sql ----------
 -- =============================================================
 -- 0010_grants.sql
 -- テーブル権限。
@@ -2521,9 +2501,7 @@ alter default privileges in schema public
   grant usage, select on sequences to authenticated;
 
 
--- ==========================================================
--- 0011_cross_team_reference_guard.sql
--- ==========================================================
+-- ---------- 0011_cross_team_reference_guard.sql ----------
 -- =============================================================
 -- 0011_cross_team_reference_guard.sql
 --
@@ -2666,9 +2644,7 @@ create trigger videos_validate_references
   for each row execute function app.validate_video_references();
 
 
--- ==========================================================
--- 0012_video_visibility_fix.sql
--- ==========================================================
+-- ---------- 0012_video_visibility_fix.sql ----------
 -- =============================================================
 -- 0012_video_visibility_fix.sql
 --
@@ -2748,9 +2724,7 @@ create policy video_clips_select on public.video_clips
   );
 
 
--- ==========================================================
--- 0013_soft_delete_rpc.sql
--- ==========================================================
+-- ---------- 0013_soft_delete_rpc.sql ----------
 -- =============================================================
 -- 0013_soft_delete_rpc.sql
 --
@@ -2885,9 +2859,7 @@ revoke all on function public.soft_delete_video_clip(uuid) from public;
 grant execute on function public.soft_delete_video_clip(uuid) to authenticated;
 
 
--- ==========================================================
--- 0014_skill_guards.sql
--- ==========================================================
+-- ---------- 0014_skill_guards.sql ----------
 -- =============================================================
 -- 0014_skill_guards.sql
 --
@@ -3157,9 +3129,7 @@ revoke insert, update, delete on public.skill_status_histories from authenticate
 revoke update, delete on public.skill_reviews from authenticated;
 
 
--- ==========================================================
--- 0015_notification_insert.sql
--- ==========================================================
+-- ---------- 0015_notification_insert.sql ----------
 -- =============================================================
 -- 0015_notification_insert.sql
 --
@@ -3250,9 +3220,7 @@ alter table public.notifications
     'report_missing', 'training_missing', 'general'));
 
 
--- ==========================================================
--- 0016_storage_ops.sql
--- ==========================================================
+-- ---------- 0016_storage_ops.sql ----------
 -- =============================================================
 -- 0016_storage_ops.sql
 -- 容量の集計と、たまったものの掃除（59章・60章）。
@@ -3437,9 +3405,7 @@ grant execute on function public.expire_stale_uploads(uuid) to authenticated;
 revoke insert, update, delete on public.storage_usage_snapshots from authenticated;
 
 
--- ==========================================================
--- 0017_measurement_guards.sql
--- ==========================================================
+-- ---------- 0017_measurement_guards.sql ----------
 -- =============================================================
 -- 0017_measurement_guards.sql
 -- 測定（3章の6: 成長を確認できる）を書く前に確かめること。
@@ -3550,9 +3516,7 @@ create policy measurement_results_own_update on public.measurement_results
   with check (app.is_own_member(team_member_id));
 
 
--- ==========================================================
--- 0018_role_guards.sql
--- ==========================================================
+-- ---------- 0018_role_guards.sql ----------
 -- =============================================================
 -- 0018_role_guards.sql
 --
@@ -3726,9 +3690,7 @@ revoke all on function app.next_skill_sort_order(uuid, uuid, uuid) from public;
 grant execute on function app.next_skill_sort_order(uuid, uuid, uuid) to authenticated;
 
 
--- ==========================================================
--- 0019_soft_delete_visibility.sql
--- ==========================================================
+-- ---------- 0019_soft_delete_visibility.sql ----------
 -- =============================================================
 -- 0019_soft_delete_visibility.sql
 --
@@ -3952,9 +3914,7 @@ revoke all on function public.soft_delete_skill(uuid) from public;
 grant execute on function public.soft_delete_skill(uuid) to authenticated;
 
 
--- ==========================================================
--- 0020_restore.sql
--- ==========================================================
+-- ---------- 0020_restore.sql ----------
 -- =============================================================
 -- 0020_restore.sql
 --
@@ -4318,9 +4278,7 @@ where f.upload_status = 'deleted'
   );
 
 
--- ==========================================================
--- 0021_invitations.sql
--- ==========================================================
+-- ---------- 0021_invitations.sql ----------
 -- =============================================================
 -- 0021_invitations.sql
 -- 招待の入口（Phase 1 の積み残し）。
@@ -4519,9 +4477,7 @@ comment on table public.team_invitations is
   '招待。リンクの生の値は保存しないため、再表示はできない。無くした場合は作り直す。';
 
 
--- ==========================================================
--- 0022_report_feedback.sql
--- ==========================================================
+-- ---------- 0022_report_feedback.sql ----------
 -- =============================================================
 -- 0022_report_feedback.sql
 -- 日報へのコーチのコメント（16章）。
@@ -4679,9 +4635,7 @@ alter table public.notifications
     'report_missing', 'training_missing', 'general'));
 
 
--- ==========================================================
--- 0023_submission_status.sql
--- ==========================================================
+-- ---------- 0023_submission_status.sql ----------
 -- =============================================================
 -- 0023_submission_status.sql
 -- 「出したこと」と「中身」を分ける（12章・16章）。
