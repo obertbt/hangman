@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Check, Minus } from 'lucide-react';
+import { Check, Lock, Minus } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -41,6 +41,9 @@ export default async function SubmissionsPage({
   const missingCondition = rows.filter((row) => !row.hasCondition);
   const missingReport = rows.filter((row) => !row.hasReport);
   const missingTraining = rows.filter((row) => !row.hasTraining);
+
+  // 出してはいるが、中身を見せない選択をした人（0023）
+  const privateCount = rows.filter((row) => row.reportIsPrivate).length;
 
   return (
     <div className="space-y-4">
@@ -91,6 +94,16 @@ export default async function SubmissionsPage({
           title="この日の日報"
           description="まだコメントしていないものを上に並べています。ひとことでも返すと次につながります。"
         />
+        {privateCount > 0 ? (
+          <p className="mb-3 flex items-start gap-1.5 text-xs text-[--color-muted]">
+            <Lock size={12} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              ほかに {privateCount} 件、「自分だけ」で出された日報があります。
+              提出済みとして数えていますが、中身は読めません。
+            </span>
+          </p>
+        ) : null}
+
         {reports.length === 0 ? (
           <EmptyState>読める日報はまだありません。</EmptyState>
         ) : (
@@ -140,15 +153,26 @@ export default async function SubmissionsPage({
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.teamMemberId} className="border-t border-[--color-border]">
-                    <td className="py-2.5 pr-2">{row.name}</td>
+                    <td className="py-2.5 pr-2">
+                      {row.reportId ? (
+                        <Link
+                          href={`/report/${row.reportId}`}
+                          className="text-keio-700 dark:text-keio-300 underline"
+                        >
+                          {row.name}
+                        </Link>
+                      ) : (
+                        row.name
+                      )}
+                    </td>
                     <td className="py-2.5 text-center">
                       <StatusMark done={row.hasCondition} />
                     </td>
                     <td className="py-2.5 text-center">
-                      <StatusMark done={row.hasReport} />
+                      <StatusMark done={row.hasReport} sealed={row.reportIsPrivate} />
                     </td>
                     <td className="py-2.5 text-center">
-                      <StatusMark done={row.hasTraining} />
+                      <StatusMark done={row.hasTraining} sealed={row.trainingIsPrivate} />
                     </td>
                   </tr>
                 ))}
@@ -158,15 +182,34 @@ export default async function SubmissionsPage({
         )}
       </Card>
 
-      <p className="text-xs text-[--color-muted]">
-        日報の中身は、公開範囲が「コーチまで」以上のものだけが見られます。
-        「自分だけ」にしている日報は、提出済みでもコーチには表示されません。
-      </p>
+      <div className="space-y-1 text-xs text-[--color-muted]">
+        <p>
+          <Lock size={12} className="mr-1 inline" aria-hidden />
+          は「出したが、中身は自分だけ」という選択です。提出済みとして数えます。
+          中身を読むことも、コメントを書くこともできません。
+        </p>
+        <p>公開範囲は選手が決めるものです。変えてほしいときは、理由とあわせて本人に頼んでください。</p>
+      </div>
     </div>
   );
 }
 
-function StatusMark({ done }: { done: boolean }) {
+/**
+ * 提出の印。
+ *
+ * **「出した」と「中身が読める」は別のこと**（0023）。
+ * 中身を見せない選択をした人も、出した人として数える。
+ * ここを一緒にすると、ちゃんと書いた選手が未提出として並ぶ。
+ */
+function StatusMark({ done, sealed = false }: { done: boolean; sealed?: boolean }) {
+  if (done && sealed) {
+    return (
+      <span className="inline-flex text-emerald-600" title="提出済み（中身は本人だけ）">
+        <Lock size={16} aria-label="提出済み（中身は本人だけ）" />
+      </span>
+    );
+  }
+
   return done ? (
     <span className="inline-flex text-emerald-600" title="提出済み">
       <Check size={18} aria-label="提出済み" />

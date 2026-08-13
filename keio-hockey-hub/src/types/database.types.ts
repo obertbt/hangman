@@ -1039,6 +1039,25 @@ export type Database = {
         Args: { p_team_id: string; p_category_id: string; p_parent_id: string | null };
         Returns: number;
       };
+      /**
+       * 提出状況（0023）。「出したこと」と「中身」を分けるための関数。
+       *
+       * RLS は行が見えるか見えないかしか決められないので、
+       * 「自分だけ」の日報は素の SELECT では消える。
+       * ここでは事実だけを返し、中身が読めるものにだけ id を付ける。
+       */
+      list_submission_status: {
+        Args: { p_team_id: string; p_date: string };
+        Returns: {
+          team_member_id: string;
+          submitted_condition: boolean;
+          submitted_report: boolean;
+          submitted_training: boolean;
+          readable_report_id: string | null;
+          report_is_private: boolean;
+          training_is_private: boolean;
+        }[];
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

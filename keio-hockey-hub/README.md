@@ -34,6 +34,7 @@ Notion や Google スプレッドシートで分かれている運営を1つに�
 | 追加    | 消したものを戻す（動画は30日以内、記録は期限なし）             | ✅ 完了 |
 | 追加    | 招待リンク（新入部員が自分でアカウントを作れる）               | ✅ 完了 |
 | 追加    | 日報へのコーチのコメント（動画を使わない、短い往復）           | ✅ 完了 |
+| 追加    | 「出したこと」と「中身」を分ける（自分だけの日報も提出済み）   | ✅ 完了 |
 
 進め方の詳細は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)、
 細かい作業一覧は [TASKS.md](TASKS.md) にあります。
@@ -163,6 +164,7 @@ Supabase の SQL Editor で、`supabase/migrations/` の中を **番号順に** 
 0020_restore.sql                     消したものを戻せるようにする
 0021_invitations.sql                 招待リンク（生の値は保存しない）
 0022_report_feedback.sql             日報のコメントを、日報の公開範囲に合わせる
+0023_submission_status.sql           出したことと中身を分ける（RLS では書けないため）
 ```
 
 Supabase CLI が使える場合は次でも構いません。

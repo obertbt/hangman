@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Field, FormMessage, Select, TextArea } from '@/components/ui/field';
 import { RatingField } from '@/components/ui/rating';
 import { saveDailyReport, type DailyActionState } from '@/features/daily/actions';
+import { describeDisclosure } from '@/features/daily/lib/disclosure';
 import { REPORT_VISIBILITY_LABELS } from '@/lib/labels';
-import type { DailyReportRow } from '@/types/database.types';
+import type { DailyReportRow, ReportVisibility } from '@/types/database.types';
 
 function ActionButtons({ isSubmitted }: { isSubmitted: boolean }) {
   const { pending } = useFormStatus();
@@ -52,6 +53,10 @@ export function ReportForm({
   );
 
   const isSubmitted = existing?.status === 'submitted';
+
+  // 選んだその場で「何が伝わるか」を出す。
+  // 「自分だけ」でも提出したことは伝わるので、それを黙っていない（0023）。
+  const [visibility, setVisibility] = useState<ReportVisibility>(existing?.visibility ?? 'staff');
 
   return (
     <form action={action} className="space-y-5">
@@ -195,8 +200,23 @@ export function ReportForm({
         <TextArea id="free_note" name="free_note" rows={3} defaultValue={existing?.free_note ?? ''} />
       </Field>
 
-      <Field label="公開範囲" htmlFor="visibility" hint="初期値は「コーチまで」です。あとから変えられます">
-        <Select id="visibility" name="visibility" defaultValue={existing?.visibility ?? 'staff'}>
+      <Field
+        label="公開範囲"
+        htmlFor="visibility"
+        hint={
+          <>
+            {describeDisclosure(visibility)}
+            <br />
+            初期値は「コーチまで」です。あとから変えられます。
+          </>
+        }
+      >
+        <Select
+          id="visibility"
+          name="visibility"
+          value={visibility}
+          onChange={(event) => setVisibility(event.target.value as ReportVisibility)}
+        >
           {Object.entries(REPORT_VISIBILITY_LABELS).map(([value, label]) => (
             <option key={value} value={value}>
               {label}

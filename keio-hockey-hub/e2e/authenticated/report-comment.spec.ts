@@ -45,6 +45,21 @@ test.describe('選手側', () => {
     await expect(page.getByText('コーチからのコメント')).toBeVisible();
   });
 
+  test('公開範囲を選ぶと、何が伝わるかがその場に出る（0023）', async ({ page }) => {
+    await page.goto('/report');
+
+    const visibility = page.getByLabel('公開範囲');
+    await visibility.selectOption('private');
+    // 「自分だけ」でも出したことは伝わる。それを黙っていない。
+    await expect(page.getByText('提出したことはコーチの提出状況に出ます')).toBeVisible();
+
+    await visibility.selectOption('staff');
+    await expect(page.getByText('コーチとスタッフが中身を読み')).toBeVisible();
+
+    await visibility.selectOption('team');
+    await expect(page.getByText('チームの全員が中身を読めます')).toBeVisible();
+  });
+
   test('選手には日報にコメントする欄が出ない（16章）', async ({ page }) => {
     await page.goto('/report');
 
@@ -68,6 +83,12 @@ test.describe('コーチ側', () => {
   test('提出状況にこの日の日報が並ぶ', async ({ page }) => {
     await page.goto('/admin/submissions');
     await expect(page.getByText('この日の日報')).toBeVisible();
+  });
+
+  test('「出した」と「中身が読める」を分けて説明している（0023）', async ({ page }) => {
+    await page.goto('/admin/submissions');
+    await expect(page.getByText('提出済みとして数えます')).toBeVisible();
+    await expect(page.getByText('公開範囲は選手が決めるものです')).toBeVisible();
   });
 
   test('日報を開いてコメントを書ける', async ({ page }) => {

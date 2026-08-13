@@ -6,26 +6,27 @@
 
 ## 1. 守ると決めたこと（62章）
 
-| 守ること                               | どう守るか                            | 確認方法                   |
-| -------------------------------------- | ------------------------------------- | -------------------------- |
-| 他選手の非公開日報を見られない         | RLS `daily_reports_*`                 | `rls_test.sql`             |
-| 他選手の非公開動画を見られない         | RLS `files_select` / `videos_select`  | 同上                       |
-| 他選手のフィードバック依頼を見られない | RLS `feedback_requests_select`        | 同上                       |
-| 別チームの情報を見られない             | 全テーブルの `app.is_team_member()`   | `rls_test.sql`             |
-| 別チームの R2 URL を発行できない       | `isKeyOwnedByTeam()` + RLS            | `storage.test.ts`          |
-| URL 直打ちでも回避できない             | RLS はクエリ単位で効く                | `auth-guard.spec.ts`       |
-| 選手が管理画面を見られない             | `requirePermission()` + RLS           | `rls_test.sql`             |
-| 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに   | ポリシー定義               |
-| 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる    | `upload_test.sql`          |
-| 他人の動画を消せない                   | `soft_delete_video` の中で権限確認    | `upload_test.sql`          |
-| 自分でスキルを承認できない             | `app.validate_player_skill()` トリガ  | `skill_test.sql`           |
-| 他人の名前で通知を送れない             | RLS `notifications_insert`            | `skill_test.sql`           |
-| 自分の役割を上げられない               | `app.guard_member_role()` トリガ      | `role_test.sql`            |
-| 最後の管理者を締め出せない             | 同上                                  | `role_test.sql`            |
-| 消した記録が消した人からも見えない     | `for all` にも `deleted_at is null`   | `skill_test.sql`           |
-| 招待リンクが DB から作れない           | 生の値を残さず sha256 だけ            | `invitation_test.sql`      |
-| 招待で役割を上げられない               | `app.guard_invitation()` トリガ       | `invitation_test.sql`      |
-| 「自分だけ」の日報にコメントできない   | `app.can_see_report()` を両ポリシーに | `report_feedback_test.sql` |
+| 守ること                               | どう守るか                             | 確認方法                     |
+| -------------------------------------- | -------------------------------------- | ---------------------------- |
+| 他選手の非公開日報を見られない         | RLS `daily_reports_*`                  | `rls_test.sql`               |
+| 他選手の非公開動画を見られない         | RLS `files_select` / `videos_select`   | 同上                         |
+| 他選手のフィードバック依頼を見られない | RLS `feedback_requests_select`         | 同上                         |
+| 別チームの情報を見られない             | 全テーブルの `app.is_team_member()`    | `rls_test.sql`               |
+| 別チームの R2 URL を発行できない       | `isKeyOwnedByTeam()` + RLS             | `storage.test.ts`            |
+| URL 直打ちでも回避できない             | RLS はクエリ単位で効く                 | `auth-guard.spec.ts`         |
+| 選手が管理画面を見られない             | `requirePermission()` + RLS            | `rls_test.sql`               |
+| 削除済みファイルを通常閲覧できない     | `deleted_at is null` を全ポリシーに    | ポリシー定義                 |
+| 投稿した動画がいきなり全員に見えない   | `visibility` を RLS の条件に入れる     | `upload_test.sql`            |
+| 他人の動画を消せない                   | `soft_delete_video` の中で権限確認     | `upload_test.sql`            |
+| 自分でスキルを承認できない             | `app.validate_player_skill()` トリガ   | `skill_test.sql`             |
+| 他人の名前で通知を送れない             | RLS `notifications_insert`             | `skill_test.sql`             |
+| 自分の役割を上げられない               | `app.guard_member_role()` トリガ       | `role_test.sql`              |
+| 最後の管理者を締め出せない             | 同上                                   | `role_test.sql`              |
+| 消した記録が消した人からも見えない     | `for all` にも `deleted_at is null`    | `skill_test.sql`             |
+| 招待リンクが DB から作れない           | 生の値を残さず sha256 だけ             | `invitation_test.sql`        |
+| 招待で役割を上げられない               | `app.guard_invitation()` トリガ        | `invitation_test.sql`        |
+| 「自分だけ」の日報にコメントできない   | `app.can_see_report()` を両ポリシーに  | `report_feedback_test.sql`   |
+| 提出状況から日報の中身が漏れない       | 事実だけを返す関数。中身の列を選ばない | `submission_status_test.sql` |
 
 ## 2. 二重に守る
 
@@ -558,7 +559,82 @@ with check (
 `can_see_report()` は `daily_reports` のポリシーと同じ規則です。
 片方を直したらもう片方も直す、と関数のコメントに書いてあります。
 
-## 16. 書き出し（Phase 9）
+## 16. 行が見えるか見えないかしか決められない（RLS の限界）
+
+RLS が答えられるのは「この行が見えるか」だけです。
+**「あることは見せるが、中身は見せない」は書けません。**
+
+そのため、公開範囲を「自分だけ」にした日報は、
+コーチの提出状況から行ごと消えていました。
+ちゃんと書いて出した選手が、未提出として名前を並べられていたことになります。
+
+見落としを減らすための画面が、出した人を責める形になっていました。
+穴ではありませんが、守り方を優先して目的を壊した例です。
+
+### 何を分けたか
+
+| 何               | 誰に伝わるか                                     |
+| ---------------- | ------------------------------------------------ |
+| 出したという事実 | `report.view_all` を持つ人（公開範囲によらない） |
+| 中身             | 公開範囲のとおり                                 |
+| コメントできるか | 中身が読めるときだけ                             |
+
+選手が「自分だけ」を選ぶのは**中身を読まないでほしい**という意思表示で、
+書いたことまで隠したいわけではない、と読みました（16章）。
+
+### 事実だけを返す（0023_submission_status.sql）
+
+```sql
+create function public.list_submission_status(p_team_id uuid, p_date date)
+returns table (
+  team_member_id uuid, submitted_report boolean, ...,
+  readable_report_id uuid,      -- 中身を読める日報だけ id が入る
+  report_is_private boolean     -- 出したが中身は本人だけ
+) security definer as $$
+begin
+  if not app.has_permission(p_team_id, 'report.view_all') then
+    raise exception '提出状況を見る権限がありません';
+  end if;
+  ...
+```
+
+`security definer` は RLS を素通りするので、
+**この関数が返すものが、そのまま境界の定義になります。**
+
+- 中身は1文字も返さない（本文の列を一切選ばない）
+- 読める日報にだけ `readable_report_id` を入れる。
+  private の日報は id を返さないので、画面から開くこともできない
+  （id を渡しても RLS が止めるが、返さないほうが事故が起きない）
+- 権限の確認を関数の先頭に置く。`security definer` に守りは付いてこない
+
+ビューにしなかったのは、
+**何を返して何を返さないかが定義の中に残らない**ためです。
+関数なら、境界の理由をその場に書けます。
+
+### 黙ってやらない
+
+出したことが伝わるなら、選手がそれを知っている必要があります。
+公開範囲を選ぶその場に、そのとき何が伝わるかを出しました
+（`src/features/daily/lib/disclosure.ts`。単体テストで固めてあります）。
+
+> 中身は誰にも見せません。ただし、提出したことはコーチの提出状況に出ます
+> （未提出として扱われないため）。コメントは付きません。
+
+コーチ側にも、鍵の印の意味と
+「公開範囲は選手が決めるもの」であることを書いています。
+
+### 教訓
+
+**RLS で書けないことに突き当たったら、要件のほうを疑う。**
+
+「private の日報が見えない」は RLS としては正しい動きでした。
+正しく動いていたので、穴として探しても見つかりません。
+画面の目的（見落としを減らす）から見て初めて、間違いだと分かります。
+
+**そして、機構の都合を利用者に押し付けない。**
+「RLS がそうなっているので未提出に見えます」は、選手にもコーチにも通じません。
+
+## 17. 書き出し（Phase 9）
 
 記録は CSV で取り出せます（3章の12: 過去の資産を失わない）。
 
@@ -585,7 +661,7 @@ CSV は「相手のアプリがどう解釈するか」まで含めて設計し�
 ファイル名に氏名は入れません（storage key と同じ考え方）。
 共有端末のダウンロードフォルダに個人名が残らないようにするためです。
 
-## 17. 確認のしかた
+## 18. 確認のしかた
 
 ```bash
 pnpm db:test    # RLS と制約

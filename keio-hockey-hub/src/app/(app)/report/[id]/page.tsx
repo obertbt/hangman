@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
 import { DeleteCommentButton, ReportCommentForm } from '@/features/daily/components/report-comments';
 import { getReportDetail } from '@/features/daily/feedback-queries';
+import { describeDisclosure } from '@/features/daily/lib/disclosure';
 import { can, requireSession } from '@/lib/auth/session';
 import { formatDateLabel, formatDateTimeInTokyo } from '@/lib/datetime';
 import { REPORT_VISIBILITY_LABELS } from '@/lib/labels';
@@ -160,10 +161,12 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
         </Card>
       ) : null}
 
-      {isOwn && report.visibility === 'private' ? (
+      {isOwn ? (
         <p className="text-xs text-[--color-muted]">
-          この日報は「自分だけ」に設定されています。コーチには表示されないため、コメントも付きません。
-          意見がほしいときは、公開範囲を「コーチまで」に変えてください。
+          いまの公開範囲では、{describeDisclosure(report.visibility, report.status)}
+          {report.visibility === 'private'
+            ? ' 意見がほしいときは、公開範囲を「コーチまで」に変えてください。'
+            : null}
         </p>
       ) : null}
 

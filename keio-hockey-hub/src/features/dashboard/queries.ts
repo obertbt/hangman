@@ -193,15 +193,16 @@ export async function getCoachDashboard(session: AppSession): Promise<CoachDashb
 
   let missingReportNames: string[] = [];
   if (hasRecordEvent && memberList.length > 0) {
-    const { data: submitted } = await supabase
-      .from('daily_reports')
-      .select('team_member_id')
-      .eq('team_id', session.teamId)
-      .eq('report_date', date)
-      .eq('status', 'submitted')
-      .is('deleted_at', null);
+    // 素の SELECT だと「自分だけ」の日報が消え、出した人が未提出に見える（0023）。
+    // 事実だけを返す関数を通す。
+    const { data: status } = await supabase.rpc('list_submission_status', {
+      p_team_id: session.teamId,
+      p_date: date,
+    });
 
-    const submittedIds = new Set((submitted ?? []).map((row) => row.team_member_id));
+    const submittedIds = new Set(
+      (status ?? []).filter((row) => row.submitted_report).map((row) => row.team_member_id),
+    );
     missingReportNames = memberList.filter((member) => !submittedIds.has(member.id)).map((m) => m.name);
   }
 

@@ -100,6 +100,7 @@ run_test "役割と権限のテスト" supabase/tests/role_test.sql
 run_test "復元のテスト" supabase/tests/restore_test.sql
 run_test "招待のテスト" supabase/tests/invitation_test.sql
 run_test "日報コメントのテスト" supabase/tests/report_feedback_test.sql
+run_test "提出状況のテスト" supabase/tests/submission_status_test.sql
 
 echo
 if [[ "$FAILED" != "0" ]]; then
