@@ -25,9 +25,25 @@ function supabaseImagePattern() {
   }
 }
 
+/**
+ * 出力の形を、置き場所に合わせて変える。
+ *
+ * Docker で動かすときは standalone が要る。
+ * 必要なものだけをまとめてくれるので、イメージが小さく済む。
+ *
+ * **Vercel では standalone にしてはいけない。**
+ * Vercel は同じことを自前でやるので、標準の出力を前提にしている。
+ * standalone を指定すると、向こうが探しにいくファイルが置かれず、
+ * こういう形で失敗する。
+ *
+ *   Error: ENOENT: no such file or directory,
+ *          open '/vercel/path0/.next/next-server.js.nft.json'
+ *
+ * `VERCEL` は Vercel が自動で入れる環境変数。
+ * どちらの動かし方も残したいので、片方に寄せない。
+ */
 const nextConfig: NextConfig = {
-  // Docker で動かすため、必要なものだけをまとめた出力にする。
-  output: 'standalone',
+  output: process.env.VERCEL ? undefined : 'standalone',
   images: {
     remotePatterns: supabaseImagePattern(),
   },
