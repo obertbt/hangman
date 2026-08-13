@@ -13,3 +13,6 @@ next-env.d.ts
 /test-results/
 /blob-report/
 .supabase/
+
+# scripts/bundle-migrations.sh が作る。元は supabase/migrations/ のほう。
+supabase/bundled.sql

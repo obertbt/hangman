@@ -139,7 +139,20 @@ STORAGE_LIMIT_BYTES=26843545600
 
 ### 3. データベースを作る
 
-Supabase の SQL Editor で、`supabase/migrations/` の中を **番号順に** 実行します。
+migration を1つのファイルにまとめてから、SQL Editor に貼り付けます。
+23 個を順に貼るのは、順番を間違える余地が 23 回あるということなので、
+まとめてしまうほうが確実です。
+
+```bash
+./scripts/bundle-migrations.sh   # supabase/bundled.sql ができる
+```
+
+できたファイルの中身を Supabase の SQL Editor に貼り付けて、実行します。
+「Success. No rows returned」と出れば完了です
+（`... does not exist, skipping` という NOTICE は正常です。
+作り直しに備えて `drop ... if exists` を書いてあるためです）。
+
+中身は次の順です。
 
 ```
 0001_core.sql              チーム・プロフィール・所属・権限
@@ -173,7 +186,11 @@ Supabase CLI が使える場合は次でも構いません。
 pnpm db:reset   # migration → seed をまとめて流す
 ```
 
-開発用のサンプルデータが要るときは `supabase/seed.sql` も実行します。
+続けて `supabase/seed.sql` も同じように実行します。
+**最初に試すときは入れておくことをおすすめします。**
+チーム・シーズン・今週・練習予定・スキル階層・測定項目が入り、
+どの画面も空っぽでない状態から触れます。
+（今日を含む週を必ず作るので、いつ動かしても「今週」が出ます）
 
 > **SQL が要るのは最初の1人だけです。**
 > 2人目以降は「招待」からリンクを渡せば、本人がアカウントを作れます。
@@ -184,28 +201,23 @@ pnpm db:reset   # migration → seed をまとめて流す
 移行で作る選手は「まだログインしていない人」として登録されます（[ADR-0002](docs/decisions/0002-profile-identity.md)）。
 最初の管理者だけは手で作ります。
 
-1. Supabase の Authentication → Users → 「Add user」でメールとパスワードを登録する
-2. SQL Editor で次を実行し、その利用者をチームの管理者にする
+1. Supabase の Authentication → Users → 「Add user」で
+   自分のメールとパスワードを登録します。
+   **Auto Confirm User を有効に**しておくと、確認メールを待たずに入れます。
+2. `supabase/setup/first-admin.sql` を開き、**冒頭の2行だけ**書き換えて
+   SQL Editor で実行します。
 
 ```sql
--- 1) チームを作る（すでにあれば飛ばす）
-insert into public.teams (name, display_name, slug)
-values ('keio-hockey', '慶應義塾大学 女子フィールドホッケー部', 'keio-hockey')
-on conflict (slug) do nothing;
-
--- 2) 作った auth ユーザーに紐づくプロフィールと所属を作る
-with u as (
-  select id, email from auth.users where email = 'ここに管理者のメール'
-), t as (
-  select id from public.teams where slug = 'keio-hockey'
-), p as (
-  insert into public.profiles (user_id, full_name, email)
-  select u.id, '管理者の氏名', u.email from u
-  returning id
-)
-insert into public.team_members (team_id, profile_id, role_code, status)
-select t.id, p.id, 'system_admin', 'active' from t, p;
+v_email     text := 'ここに管理者のメールアドレス';
+v_full_name text := 'ここに氏名';
 ```
+
+`完了: ... を管理者にしました。` と出て、
+下の確認用の SELECT が1行返れば成功です。
+
+seed の見本（`admin@example.com`）と同じメールで作った場合は、
+新しく作らずにその人へログインを結び付けます。
+何度実行しても二重にはなりません。
 
 ### 5. 起動する
 
@@ -213,9 +225,25 @@ select t.id, p.id, 'system_admin', 'active' from t, p;
 pnpm dev
 ```
 
-<http://localhost:3000> を開きます。
-設定が正しいかどうかは <http://localhost:3000/setup-check> で確認できます
-（設定済みかどうかだけを表示し、値そのものは表示しません）。
+<http://localhost:3000> を開き、手順4で作ったメールとパスワードでログインします。
+
+うまくいかないときは <http://localhost:3000/setup-check> を開いてください。
+どの設定が入っていて、どれが空かだけを表示します
+（値そのものは表示しません）。
+
+**最初に見るとよい順番**
+
+```
+今日            いまの状況。ここが入口
+日報            書いて提出する。公開範囲を変えると説明が変わる
+提出状況        コーチとして、誰が出していないかを見る（管理者・コーチのみ）
+名簿 → 招待     2人目を招く。リンクを渡すだけ
+データ移行      スプレッドシートの名簿を貼り付けて取り込む
+```
+
+選手としての画面も見たい場合は、招待でもう1つアカウントを作り、
+別のブラウザ（またはプライベートウィンドウ）でログインすると、
+両方を並べて確かめられます。
 
 ---
 
