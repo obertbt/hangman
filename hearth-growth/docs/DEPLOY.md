@@ -21,7 +21,7 @@
 
 ## 2. テーブルと権限を作る
 
-**10個のファイルを、番号順に1つずつ**貼り付けて実行します。
+**11個のファイルを、番号順に1つずつ**貼り付けて実行します。
 
 長い SQL を一度に貼ると、端末側で途中までしかコピーされないことがあります
 （切れたまま実行すると `syntax error at end of input` で失敗します）。
@@ -44,20 +44,21 @@
 | 8   | [08.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/08.sql) |
 | 9   | [09.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/09.sql) |
 | 10  | [10.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/10.sql) |
+| 11  | [11.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/11.sql) |
 
 **順番は必ず守ってください。** 後の番号は前の番号で作ったものを使います。
 
 ### 確認
 
-10個すべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/check.sql) を実行します。
+11個すべて終わったら [check.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/check.sql) を実行します。
 こう出れば成功です。
 
 | テーブル数 | 関数の数 | RLSが有効なテーブル数 | ポリシー数 |
 | ---------- | -------- | --------------------- | ---------- |
-| 15         | 20以上   | 15                    | 47         |
+| 18         | 20以上   | 18                    | 53         |
 
 関数の数とポリシー数は環境によって少し前後します。
-**テーブル数と RLS が有効なテーブル数が同じ 15** になっていれば大丈夫です。
+**テーブル数と RLS が有効なテーブル数が同じ 18** になっていれば大丈夫です。
 
 ### やり直したいとき
 
@@ -89,10 +90,49 @@ grant all on all tables in schema public to anon, authenticated, service_role;
 | 複数グループへの公開 | [0012_post_groups-1.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0012_post_groups-1.sql) → [0012_post_groups-2.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0012_post_groups-2.sql) |
 | グループの削除       | [0013_delete_group.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0013_delete_group.sql)                                                                                                                                        |
 | 就寝・起床           | [0014_sleep-1.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0014_sleep-1.sql) → [0014_sleep-2.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0014_sleep-2.sql)                         |
+| 起床の呼びかけ       | [0015_wake_alarm.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/setup/updates/0015_wake_alarm.sql)                                                                                                                                            |
 
 `-1` `-2` と分かれているものは、**その順番で続けて**実行してください。
 
-実行したあと、上の check.sql でテーブル数が 15 になっていれば成功です。
+実行したあと、上の check.sql でテーブル数が 18 になっていれば成功です。
+
+## 2.5 通知を使えるようにする（任意）
+
+起床予定の「起きていますか？」を使うときだけ必要です。使わないなら飛ばして構いません。
+
+> ⚠️ **これは目覚まし時計ではありません。**
+> Web の通知は省電力で遅れることがあり、マナーモードも越えません。
+> 音で起こすのは端末のアラームアプリに任せてください。
+> ここで作るのは「起きたことを1タップで記録する」ための呼びかけです。
+
+**① Vercel に4つの環境変数を追加**
+
+Vercel → プロジェクト → Settings → Environment Variables
+
+| 名前                           | 値                                       |
+| ------------------------------ | ---------------------------------------- |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | 渡した「公開鍵」                         |
+| `VAPID_PRIVATE_KEY`            | 渡した「秘密鍵」                         |
+| `VAPID_SUBJECT`                | `mailto:` に続けて自分のメールアドレス   |
+| `CRON_SECRET`                  | 自分で決めた合言葉（英数字20文字くらい） |
+
+追加したら **Deployments → 最新 → Redeploy** で入れ直します。
+`NEXT_PUBLIC_` の付いた値は、作り直さないと反映されません。
+
+**② Supabase で定期実行を設定**
+
+[push-cron.sql](https://github.com/obertbt/hangman/blob/main/hearth-growth/supabase/push-cron.sql) を開き、
+**2か所（アプリの URL と合言葉）を自分の値に書き換えてから** SQL Editor で実行します。
+合言葉は Vercel の `CRON_SECRET` と**まったく同じ文字列**にしてください。
+
+**③ 確認**
+
+`/setup-check` を開くと「通知の設定はそろっています」と出れば成功です。
+合言葉が食い違っていると、そう書いてあるので直せます。
+
+**④ 端末で通知を許可**
+
+アプリの **設定 → この端末への通知 → この端末で通知を受け取る**
 
 ## 3. 接続情報を控える
 
@@ -181,6 +221,9 @@ Chrome のメニュー（右上の点3つ）→ **ホーム画面に追加**
 22. グループの作成者なら、**グループ設定の下から削除**できるか（記録は消えません）
 23. スマートフォンの**縦画面**で、マイページ →「そのほか」からグループへ行けるか
 24. タブレットを**横**にしたとき、画面いっぱいに表示されるか
+
+25. **就寝**で起床予定の時刻を入れ、その時刻に「起きていますか？」が届くか（通知を設定した場合）
+26. 通知の「**起きている**」を押すと、アプリを開かずに睡眠が記録されるか
 
 > ホーム画面に追加済みの場合、**画面の向きの設定は入れ直すまで反映されないことがあります。**
 > 横にしても縦のままなら、一度ホーム画面から削除して、追加し直してください。

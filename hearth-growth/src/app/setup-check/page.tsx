@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { env } from '@/lib/env';
+import { serverEnv } from '@/lib/server-env';
 
 export const metadata: Metadata = { title: '接続の確認', robots: { index: false, follow: false } };
 
@@ -107,7 +108,7 @@ async function checkDatabase(): Promise<CheckResult> {
         ok: false,
         title: 'テーブルが見つかりません',
         detail: `HTTP ${response.status}`,
-        hint: 'supabase/setup/ の SQL（01〜07）をすべて実行したか確認してください。',
+        hint: 'supabase/setup/ の SQL（01〜10）をすべて実行したか確認してください。',
       };
     }
 
@@ -129,8 +130,83 @@ async function checkDatabase(): Promise<CheckResult> {
   }
 }
 
+/**
+ * 通知の設定が噛み合っているか。
+ *
+ * 見たいのは「Vercel に入れた合言葉と、Supabase に入れた合言葉が同じか」。
+ * ここが食い違うと、定期実行は動いているのに通知だけ飛ばない、という
+ * いちばん気づきにくい壊れ方をする。
+ */
+async function checkPush(): Promise<CheckResult | null> {
+  const config = serverEnv();
+
+  const missing = [
+    config.vapidPublicKey ? null : 'NEXT_PUBLIC_VAPID_PUBLIC_KEY',
+    config.vapidPrivateKey ? null : 'VAPID_PRIVATE_KEY',
+    config.cronSecret ? null : 'CRON_SECRET',
+  ].filter((name) => name !== null);
+
+  if (missing.length === 3) {
+    // まったく設定していない＝通知を使わない、とみなして黙る
+    return null;
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      title: '通知の設定が途中です',
+      detail: `未設定: ${missing.join(', ')}`,
+      hint: 'Vercel の環境変数に3つとも登録し、再デプロイしてください。',
+    };
+  }
+
+  const url = `${env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/check_cron_secret`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_secret: config.cronSecret }),
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    });
+
+    if (response.status === 404) {
+      return {
+        ok: false,
+        title: '通知用の SQL がまだ実行されていません',
+        detail: `HTTP ${response.status}`,
+        hint: 'supabase/setup/updates/ の 0015 を実行してください。',
+      };
+    }
+
+    const matched = (await response.json()) as boolean;
+
+    if (matched !== true) {
+      return {
+        ok: false,
+        title: '合言葉が一致していません',
+        detail: 'Vercel の CRON_SECRET と、Supabase に登録した合言葉が違います',
+        hint: 'supabase/push-cron.sql の合言葉を、Vercel の CRON_SECRET と同じ文字列にして実行し直してください。',
+      };
+    }
+
+    return { ok: true, title: '通知の設定はそろっています', detail: '合言葉も一致しています' };
+  } catch (error) {
+    return {
+      ok: false,
+      title: '通知の設定を確認できませんでした',
+      detail: error instanceof Error ? error.name : '不明な失敗',
+    };
+  }
+}
+
 export default async function SetupCheckPage() {
-  const [auth, database] = await Promise.all([checkAuthEndpoint(), checkDatabase()]);
+  const [auth, database, push] = await Promise.all([checkAuthEndpoint(), checkDatabase(), checkPush()]);
 
   const key = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const keyRole = readKeyRole(key);
@@ -145,7 +221,7 @@ export default async function SetupCheckPage() {
       </header>
 
       <section className="space-y-3">
-        {[auth, database].map((result) => (
+        {[auth, database, ...(push ? [push] : [])].map((result) => (
           <div
             key={result.title}
             className="rounded-2xl border border-[--color-border] bg-[--color-surface] p-4"

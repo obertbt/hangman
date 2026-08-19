@@ -6,6 +6,8 @@ import type { ActivitySessionRow, CategoryRow } from '@/types/database.types';
 export interface ActiveSession {
   session: ActivitySessionRow;
   category: Pick<CategoryRow, 'id' | 'name' | 'icon' | 'color'> | null;
+  /** 起床予定。睡眠のタイマーで設定したときだけ入る。 */
+  wakeAt: string | null;
   /**
    * サーバー（DB ではなくアプリサーバー）の現在時刻。
    * ブラウザの時計とのずれを補正するために画面へ渡す。
@@ -38,12 +40,25 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
   if (!data) return null;
 
   const { category, ...session } = data;
-  return { session, category, serverNow: new Date().toISOString() };
+
+  // 起床予定は睡眠のときだけ。無ければ null のまま。
+  const { data: alarm } = await supabase
+    .from('sleep_alarms')
+    .select('wake_at')
+    .eq('session_id', session.id)
+    .maybeSingle();
+
+  return {
+    session,
+    category,
+    wakeAt: alarm?.wake_at ?? null,
+    serverNow: new Date().toISOString(),
+  };
 }
 
 /** 直近で終了したセッションのうち、まだ投稿になっていないもの。 */
 export async function getLatestCompletedSession(): Promise<
-  (Omit<ActiveSession, 'serverNow'> & { hasPost: boolean }) | null
+  (Omit<ActiveSession, 'serverNow' | 'wakeAt'> & { hasPost: boolean }) | null
 > {
   const supabase = await createClient();
   const {

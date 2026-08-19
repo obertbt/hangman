@@ -179,6 +179,26 @@ export type NotificationRow = {
   created_at: string;
 };
 
+/** 端末ごとの通知の宛先。端末を変えると別の行になる。 */
+export type PushSubscriptionRow = {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  created_at: string;
+};
+
+/** 起床予定。就寝のタイマー1件につき1つ。 */
+export type SleepAlarmRow = {
+  session_id: string;
+  user_id: string;
+  wake_at: string;
+  /** 通知を送った時刻。二重に送らないための印。 */
+  notified_at: string | null;
+  created_at: string;
+};
+
 export type DailyGoalRow = {
   id: string;
   user_id: string;
@@ -339,6 +359,19 @@ export type Database = {
           Relationship<'group_id', 'groups'>,
         ]
       >;
+      push_subscriptions: TableShape<
+        PushSubscriptionRow,
+        Insertable<PushSubscriptionRow, 'user_id' | 'endpoint' | 'p256dh' | 'auth', 'id' | 'created_at'>,
+        Partial<PushSubscriptionRow>,
+        [Relationship<'user_id', 'profiles'>]
+      >;
+      sleep_alarms: TableShape<
+        SleepAlarmRow,
+        never,
+        Partial<SleepAlarmRow>,
+        [Relationship<'session_id', 'activity_sessions'>, Relationship<'user_id', 'profiles'>]
+      >;
+      app_config: TableShape<{ key: string; value: string }, never, never>;
       daily_goals: TableShape<
         DailyGoalRow,
         Insertable<
@@ -448,8 +481,16 @@ export type Database = {
         Returns: void;
       };
       start_sleep: {
-        Args: Record<PropertyKey, never>;
+        Args: { p_wake_at?: string | null };
         Returns: ActivitySessionRow;
+      };
+      check_cron_secret: {
+        Args: { p_secret: string };
+        Returns: boolean;
+      };
+      claim_due_wake_alarms: {
+        Args: { p_secret: string };
+        Returns: { endpoint: string; p256dh: string; auth: string }[];
       };
       wake_up: {
         Args: Record<PropertyKey, never>;

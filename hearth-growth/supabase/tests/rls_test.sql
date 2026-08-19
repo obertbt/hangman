@@ -1393,6 +1393,133 @@ select pg_temp.check(
 
 -- -----------------------------------------------------------------------------
 \echo ''
+\echo '== 起床予定と通知'
+-- -----------------------------------------------------------------------------
+reset role;
+insert into public.app_config (key, value) values ('cron_secret', 'himitsu-no-aikotoba');
+
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+
+-- この端末で通知を受け取る、を登録
+insert into public.push_subscriptions (user_id, endpoint, p256dh, auth)
+values (:'carol', 'https://example.test/push/carol', 'p256dh-carol', 'auth-carol');
+
+select pg_temp.check(
+  (select count(*) from public.push_subscriptions) = 1,
+  '自分の通知の宛先だけが見える');
+
+insert into v select 'sleep2', (public.start_sleep(now() + interval '7 hours')).id::text;
+
+select pg_temp.check(
+  (select count(*) from public.sleep_alarms where session_id = pg_temp.uuid_val('sleep2')) = 1,
+  '就寝時に起床予定を登録できる');
+
+-- 一度起きてから、過去や遠すぎる時刻を試す
+-- （例外を捕まえると巻き戻るので、起床は do ブロックの外で済ませる）
+select public.wake_up();
+
+do $$
+begin
+  begin
+    perform public.start_sleep(now() - interval '1 hour');
+    raise exception 'FAILED: 過去の起床予定を登録できてしまった';
+  exception when sqlstate 'P0001' then
+    raise notice '  ok   過去の時刻は起床予定にできない';
+  end;
+end;
+$$;
+
+do $$
+begin
+  begin
+    perform public.start_sleep(now() + interval '3 days');
+    raise exception 'FAILED: 遠すぎる起床予定を登録できてしまった';
+  exception when sqlstate 'P0001' then
+    raise notice '  ok   24時間より先は起床予定にできない';
+  end;
+end;
+$$;
+
+-- 他人の通知の宛先は見えない
+reset role;
+select set_config('request.jwt.claim.sub', :'bob', true);
+set local role authenticated;
+select pg_temp.check(
+  (select count(*) from public.push_subscriptions) = 0,
+  '他人の通知の宛先は見えない');
+select pg_temp.check(
+  (select count(*) from public.sleep_alarms) = 0,
+  '他人の起床予定は見えない');
+
+-- 合言葉が無ければ、送り先を1件も取り出せない
+do $$
+begin
+  begin
+    perform public.claim_due_wake_alarms('chigau-aikotoba');
+    raise exception 'FAILED: 違う合言葉で通知先を取り出せてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   合言葉が違えば通知先を取り出せない';
+  end;
+end;
+$$;
+
+do $$
+begin
+  begin
+    perform public.claim_due_wake_alarms(null);
+    raise exception 'FAILED: 合言葉なしで通知先を取り出せてしまった';
+  exception when insufficient_privilege then
+    raise notice '  ok   合言葉なしでは通知先を取り出せない';
+  end;
+end;
+$$;
+
+-- 合言葉が正しければ、時刻が来たものだけ取り出せる
+reset role;
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+insert into v select 'sleep3', (public.start_sleep(now() + interval '7 hours')).id::text;
+
+reset role;
+select pg_temp.check(
+  (select count(*) from public.claim_due_wake_alarms('himitsu-no-aikotoba')) = 0,
+  'まだ時刻が来ていない予定は取り出されない');
+
+-- 予定時刻を過ぎさせる
+update public.sleep_alarms set wake_at = now() - interval '1 minute'
+where session_id = pg_temp.uuid_val('sleep3');
+
+select pg_temp.check(
+  (select count(*) from public.claim_due_wake_alarms('himitsu-no-aikotoba')) = 1,
+  '時刻が来た予定の通知先を取り出せる');
+select pg_temp.check(
+  (select count(*) from public.claim_due_wake_alarms('himitsu-no-aikotoba')) = 0,
+  '同じ予定を二度は取り出さない');
+
+-- 起床すると予定は消える
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+select public.wake_up();
+
+reset role;
+select pg_temp.check(
+  (select count(*) from public.sleep_alarms where session_id = pg_temp.uuid_val('sleep3')) = 0,
+  '起床すると起床予定も消える');
+
+-- 取り消したタイマーの予定も残さない
+select set_config('request.jwt.claim.sub', :'carol', true);
+set local role authenticated;
+insert into v select 'sleep4', (public.start_sleep(now() + interval '7 hours')).id::text;
+select public.cancel_session(pg_temp.uuid_val('sleep4'));
+
+reset role;
+select pg_temp.check(
+  (select count(*) from public.sleep_alarms where session_id = pg_temp.uuid_val('sleep4')) = 0,
+  'タイマーを取り消すと起床予定も消える');
+
+-- -----------------------------------------------------------------------------
+\echo ''
 \echo '== 招待の期限・失効・上限'
 -- -----------------------------------------------------------------------------
 reset role;

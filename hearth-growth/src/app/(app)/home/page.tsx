@@ -85,6 +85,7 @@ export default async function HomePage() {
           <div className="mt-3">
             <SleepShortcut
               sleepingSince={isSleeping ? (activeSession?.session.started_at ?? null) : null}
+              wakeAt={isSleeping ? (activeSession?.wakeAt ?? null) : null}
               otherTimerName={activeSession && !isSleeping ? (activeSession.category?.name ?? '活動') : null}
               serverNow={activeSession?.serverNow ?? new Date().toISOString()}
               timeZone={profile.timezone}

@@ -165,6 +165,7 @@ npm run db:reset        # migrations と seed.sql を流し直す
 | `0012_post_groups.sql`              | 1つの記録を複数のグループへ公開できるようにする    |
 | `0013_delete_group.sql`             | グループの削除（記録は残す）                       |
 | `0014_sleep.sql`                    | 就寝・起床と、集計に数えないカテゴリー             |
+| `0015_wake_alarm.sql`               | 起床予定と「起きていますか？」の通知               |
 
 RLS が意図どおり効いているかは `supabase/tests/rls_test.sql` で確認できます
 （[実行方法](supabase/tests/README.md)）。
@@ -223,6 +224,7 @@ hearth-growth/
 │  │  ├─ timer/           タイマー
 │  │  ├─ activities/      活動記録と公開範囲
 │  │  ├─ photos/          活動記録に添える写真（縮小・送信・期限付き URL）
+│  │  ├─ push/            端末への通知（宛先の登録と解除）
 │  │  ├─ timeline/        タイムラインと活動中メンバー
 │  │  ├─ reactions/       リアクション
 │  │  ├─ comments/        コメント

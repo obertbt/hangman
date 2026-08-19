@@ -1,158 +1,22 @@
--- Hearth Growth セットアップ 10 / 11
--- 番号順に、Supabase の SQL Editor へ貼り付けて実行してください。
--- 元になっているのは supabase/migrations/ の各ファイルです。
+-- =============================================================================
+-- Hearth Growth : 起床予定時刻と、「起きていますか？」の通知
+-- =============================================================================
+-- 目覚まし時計の代わりにはならない。Web の通知は省電力で遅れることがあり、
+-- マナーモードも越えない。起こす役目は端末のアラームアプリのもの。
+--
+-- ここで作るのは「起きたことを1タップで記録する」ための呼びかけ。
+-- 予定時刻に通知を出し、「起きている」を押したらその場で睡眠を終える。
+--
+-- 送信の流れ:
+--   pg_cron（1分ごと）→ pg_net で /api/push/dispatch を叩く
+--   → その API が claim_due_wake_alarms() で対象を取り、Web Push を送る
+--
+-- サービスロールキーは使わない。合言葉で守った関数を1つだけ開ける。
+-- =============================================================================
 
-create or replace function public.get_group_week_summary(p_group_id uuid, p_week_start date default null)
-returns table (
-  user_id       uuid,
-  display_name  text,
-  avatar_url    text,
-  total_seconds bigint,
-  active_days   integer
-)
-language plpgsql
-stable
-security definer
-set search_path = public
-as $$
-declare
-  v_start date := coalesce(p_week_start, public.user_week_start());
-begin
-  if not public.is_group_member(p_group_id, auth.uid()) then
-    raise exception 'not a group member' using errcode = '42501';
-  end if;
-
-  return query
-  select
-    m.user_id,
-    pr.display_name,
-    pr.avatar_url,
-    coalesce(sum(p.duration_seconds), 0)::bigint,
-    count(distinct p.activity_date)::integer
-  from public.group_members m
-  join public.profiles pr on pr.id = m.user_id
-  left join public.activity_posts p
-    on p.user_id = m.user_id
-   and p.deleted_at is null
-   and p.visibility = 'group'
-   and p.activity_date between v_start and v_start + 6
-   and exists (
-     select 1 from public.post_groups g
-     where g.post_id = p.id and g.group_id = p_group_id
-   )
-   and exists (
-     select 1 from public.categories c
-     where c.id = p.category_id and c.counts_toward_total
-   )
-  where m.group_id = p_group_id
-  group by m.user_id, pr.display_name, pr.avatar_url
-  order by pr.display_name;
-end;
-$$;
-
-/*
- * 就寝はタイマーの開始、起床はタイマーの終了と記録の作成にあたる。
- * 仕組みを増やさず、既にあるタイマーへ寄せる。
- * こうすると「今の睡眠時間」も途中で分かるし、
- * 端末の時計ではなくサーバーの時刻で測られる。
- *
- * 押す回数は1回ずつ。振り返りの入力は挟まない。
- * 眠いときと寝起きに文章を書かせない。
- */
-create or replace function public.start_sleep()
-returns public.activity_sessions
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_user_id     uuid := auth.uid();
-  v_category_id uuid;
-begin
-  if v_user_id is null then
-    raise exception 'authentication required' using errcode = '42501';
-  end if;
-
-  select id into v_category_id
-  from public.categories
-  where user_id = v_user_id and name = '睡眠'
-  limit 1;
-
-  -- 消してしまった人のために作り直す
-  if v_category_id is null then
-    insert into public.categories (user_id, name, icon, color, sort_order, counts_toward_total)
-    values (v_user_id, '睡眠', '😴', '#7A7F9A', 95, false)
-    returning id into v_category_id;
-  end if;
-
-  return public.start_session(v_category_id, null, null);
-end;
-$$;
-
-/*
- * 起床。走っている睡眠のタイマーを終わらせ、そのまま記録にする。
- *
- * 公開範囲は、その人の既定（設定画面で選んだもの）に合わせる。
- * group を既定にしていて、どのグループにも入っていない場合は「自分だけ」。
- */
-create or replace function public.wake_up()
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_user_id    uuid := auth.uid();
-  v_session_id uuid;
-  v_visibility text;
-  v_group_ids  uuid[];
-begin
-  if v_user_id is null then
-    raise exception 'authentication required' using errcode = '42501';
-  end if;
-
-  select s.id into v_session_id
-  from public.activity_sessions s
-  join public.categories c on c.id = s.category_id
-  where s.user_id = v_user_id
-    and s.status in ('running', 'paused')
-    and c.name = '睡眠'
-  limit 1;
-
-  if v_session_id is null then
-    raise exception 'not sleeping' using errcode = 'P0002';
-  end if;
-
-  perform public.complete_session(v_session_id, null);
-
-  select default_visibility into v_visibility from public.profiles where id = v_user_id;
-
-  if v_visibility = 'group' then
-    select array_agg(group_id) into v_group_ids
-    from public.group_members where user_id = v_user_id;
-
-    -- どこにも入っていなければ、公開しようがない
-    if v_group_ids is null then
-      v_visibility := 'private';
-    end if;
-  elsif v_visibility = 'selected' then
-    -- 宛先を選ばせない導線なので、既定が selected でも「自分だけ」にする
-    v_visibility := 'private';
-  end if;
-
-  return public.create_activity_post(
-    p_session_id => v_session_id,
-    p_visibility => v_visibility,
-    p_group_ids  => v_group_ids
-  );
-end;
-$$;
-
-revoke all on function public.start_sleep() from public, anon;
-revoke all on function public.wake_up() from public, anon;
-grant execute on function public.start_sleep() to authenticated;
-grant execute on function public.wake_up() to authenticated;
-
+-- -----------------------------------------------------------------------------
+-- 定期実行と共有する合言葉
+-- -----------------------------------------------------------------------------
 create table public.app_config (
   key   text primary key,
   value text not null
@@ -170,9 +34,13 @@ create policy "app_config_no_access" on public.app_config
   using (false)
   with check (false);
 
+-- -----------------------------------------------------------------------------
+-- 端末ごとの通知の宛先
+-- -----------------------------------------------------------------------------
 create table public.push_subscriptions (
   id         uuid        primary key default gen_random_uuid(),
   user_id    uuid        not null references public.profiles (id) on delete cascade,
+  -- ブラウザが発行する宛先。端末を変えると別の行になる。
   endpoint   text        not null unique,
   p256dh     text        not null,
   auth       text        not null,
@@ -200,14 +68,19 @@ create policy "push_subscriptions_delete_own" on public.push_subscriptions
   for delete to authenticated
   using (user_id = (select auth.uid()));
 
+-- -----------------------------------------------------------------------------
+-- 起床予定
+-- -----------------------------------------------------------------------------
 create table public.sleep_alarms (
   session_id  uuid        primary key references public.activity_sessions (id) on delete cascade,
   user_id     uuid        not null references public.profiles (id) on delete cascade,
   wake_at     timestamptz not null,
+  -- 通知を送った時刻。二重に送らないための印。
   notified_at timestamptz,
   created_at  timestamptz not null default now()
 );
 
+-- 1分ごとに「そろそろのものはあるか」を引くので、まだ送っていないものだけ索引に入れる
 create index sleep_alarms_due_idx on public.sleep_alarms (wake_at) where notified_at is null;
 
 alter table public.sleep_alarms enable row level security;
@@ -238,6 +111,9 @@ create trigger activity_sessions_clear_alarm
   after update of status on public.activity_sessions
   for each row execute function public.clear_sleep_alarm();
 
+-- -----------------------------------------------------------------------------
+-- 就寝（起床予定つき）
+-- -----------------------------------------------------------------------------
 drop function if exists public.start_sleep();
 
 create or replace function public.start_sleep(p_wake_at timestamptz default null)
@@ -286,6 +162,7 @@ begin
 end;
 $$;
 
+-- 起床時に予定も片付ける（トリガーでも消えるが、意図として明示しておく）
 create or replace function public.wake_up()
 returns uuid
 language plpgsql
@@ -337,3 +214,76 @@ begin
   );
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- 送るべき通知を取り出す（定期実行から呼ぶ）
+-- -----------------------------------------------------------------------------
+/*
+ * 合言葉が合ったときだけ答える。
+ *
+ * サービスロールキーを配らずに済ませるための入口。
+ * ここが返すのは「通知の宛先」だけで、記録も本文も返さない。
+ * 取り出した時点で notified_at を立てるので、同じ予定を二度送らない。
+ */
+create or replace function public.claim_due_wake_alarms(p_secret text)
+returns table (endpoint text, p256dh text, auth text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_expected text;
+begin
+  select value into v_expected from public.app_config where key = 'cron_secret';
+
+  -- 合言葉が未設定なら、誰にも答えない
+  if v_expected is null or p_secret is null or p_secret <> v_expected then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  return query
+  with due as (
+    update public.sleep_alarms a
+    set notified_at = now()
+    where a.notified_at is null
+      and a.wake_at <= now()
+      and exists (
+        select 1 from public.activity_sessions s
+        where s.id = a.session_id and s.status in ('running', 'paused')
+      )
+    returning a.user_id
+  )
+  select p.endpoint, p.p256dh, p.auth
+  from due
+  join public.push_subscriptions p on p.user_id = due.user_id;
+end;
+$$;
+
+/*
+ * 合言葉が合っているかだけを確かめる。
+ *
+ * /setup-check から呼ぶ。claim_due_wake_alarms を確認に使うと、
+ * 時刻の来た予定をそこで消費してしまい、通知が飛ばなくなる。
+ */
+create or replace function public.check_cron_secret(p_secret text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.app_config
+    where key = 'cron_secret' and value = p_secret and p_secret is not null
+  );
+$$;
+
+revoke all on function public.check_cron_secret(text) from public;
+grant execute on function public.check_cron_secret(text) to anon, authenticated;
+
+revoke all on function public.claim_due_wake_alarms(text) from public;
+-- 定期実行は anon 鍵で呼ぶ。中身は合言葉で守る。
+grant execute on function public.claim_due_wake_alarms(text) to anon, authenticated;
+
+revoke all on function public.start_sleep(timestamptz) from public, anon;
+grant execute on function public.start_sleep(timestamptz) to authenticated;
