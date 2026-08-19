@@ -44,7 +44,7 @@ export default async function ActivitiesPage() {
           />
         </Card>
 
-        <ActivityList activities={activities} />
+        <ActivityList activities={activities} timeZone={profile.timezone} />
       </div>
     </>
   );

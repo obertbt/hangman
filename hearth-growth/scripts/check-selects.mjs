@@ -33,7 +33,7 @@ const SELECTS = [
     where: 'src/features/timeline/queries.ts (getTimeline)',
     table: 'activity_posts',
     select:
-      'id,user_id,title,body,duration_seconds,activity_date,visibility,created_at,' +
+      'id,user_id,title,body,duration_seconds,activity_date,visibility,started_at,ended_at,created_at,' +
       'category:categories(name,icon,color),profile:profiles!user_id(display_name,avatar_url),' +
       'reactions(count),comments(count)',
   },

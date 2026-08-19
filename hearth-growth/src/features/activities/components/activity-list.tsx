@@ -3,11 +3,18 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import type { ActivityListItem } from '@/features/activities/queries';
 import { formatDuration } from '@/lib/date/duration';
+import { formatTimeRange } from '@/lib/date/time-of-day';
 import { formatDateLabel } from '@/lib/date/timezone';
 import { VISIBILITY_LABELS } from '@/lib/permissions/visibility';
 
 /** 自分の活動記録の一覧。日付ごとにまとめて表示する。 */
-export function ActivityList({ activities }: { activities: ActivityListItem[] }) {
+export function ActivityList({
+  activities,
+  timeZone = 'Asia/Tokyo',
+}: {
+  activities: ActivityListItem[];
+  timeZone?: string;
+}) {
   if (activities.length === 0) {
     return (
       <Card className="text-center">
@@ -57,9 +64,13 @@ export function ActivityList({ activities }: { activities: ActivityListItem[] })
                       <p className="text-xs text-[--color-muted]">
                         {activity.category?.name}・{formatDuration(activity.durationSeconds)}・
                         {VISIBILITY_LABELS[activity.visibility]}
-                        {activity.fromTimer ? '・タイマー' : ''}
                         {activity.photoCount > 0 ? `・写真${activity.photoCount}枚` : ''}
                       </p>
+                      {activity.startedAt && activity.endedAt ? (
+                        <p className="text-xs text-[--color-muted]">
+                          {formatTimeRange(activity.startedAt, activity.endedAt, timeZone)}
+                        </p>
+                      ) : null}
                     </div>
                   </Link>
                 </li>

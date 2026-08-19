@@ -10,6 +10,9 @@ export interface ActivityListItem {
   durationSeconds: number;
   activityDate: string;
   visibility: Visibility;
+  /** タイマー由来の記録だけ、開始と終了の時刻を持つ。 */
+  startedAt: string | null;
+  endedAt: string | null;
   fromTimer: boolean;
   category: Pick<CategoryRow, 'id' | 'name' | 'icon' | 'color'> | null;
   photoCount: number;
@@ -156,6 +159,8 @@ function toListItem(row: PostWithCategory): ActivityListItem {
     durationSeconds: row.duration_seconds,
     activityDate: row.activity_date,
     visibility: row.visibility,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
     fromTimer: row.session_id !== null,
     category: row.category,
     photoCount: row.activity_photos?.[0]?.count ?? 0,

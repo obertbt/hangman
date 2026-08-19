@@ -130,7 +130,7 @@ export default async function ProfilePage() {
 
         <section aria-label="過去の記録">
           <h2 className="pb-2 text-sm font-medium text-[--color-muted]">過去の記録</h2>
-          <ActivityList activities={activities} />
+          <ActivityList activities={activities} timeZone={profile.timezone} />
         </section>
       </div>
     </>

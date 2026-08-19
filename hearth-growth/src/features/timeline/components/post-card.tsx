@@ -6,6 +6,7 @@ import { PhotoGrid } from '@/features/photos/components/photo-grid';
 import { ReactionBar } from '@/features/reactions/components/reaction-bar';
 import type { TimelineItem } from '@/features/timeline/queries';
 import { formatDuration } from '@/lib/date/duration';
+import { formatTimeRange } from '@/lib/date/time-of-day';
 import { formatRelativeTime } from '@/lib/date/relative';
 import { VISIBILITY_LABELS } from '@/lib/permissions/visibility';
 
@@ -47,6 +48,12 @@ export function PostCard({ item, timeZone }: { item: TimelineItem; timeZone: str
           </span>
         ) : null}
         <span className="text-sm font-medium">{formatDuration(item.durationSeconds)}</span>
+        {/* タイマーで計った記録は、何時から何時までかも出す（睡眠でとくに要る） */}
+        {item.startedAt && item.endedAt ? (
+          <span className="text-xs text-[--color-muted]">
+            {formatTimeRange(item.startedAt, item.endedAt, timeZone)}
+          </span>
+        ) : null}
       </div>
 
       {item.title ? <p className="mt-2 text-sm font-medium">{item.title}</p> : null}

@@ -20,6 +20,9 @@ export interface TimelineItem {
   durationSeconds: number;
   activityDate: string;
   visibility: Visibility;
+  /** タイマー由来の記録だけ、開始と終了の時刻を持つ。 */
+  startedAt: string | null;
+  endedAt: string | null;
   createdAt: string;
   reactionCount: number;
   commentCount: number;
@@ -54,7 +57,8 @@ export interface TimelinePage {
  * その失敗は型検査では見えないので、scripts/check-selects.mjs で確かめている。
  */
 const SELECT_COLUMNS = `
-  id, user_id, title, body, duration_seconds, activity_date, visibility, created_at,
+  id, user_id, title, body, duration_seconds, activity_date, visibility,
+  started_at, ended_at, created_at,
   category:categories(name, icon, color),
   profile:profiles!user_id(display_name, avatar_url),
   reactions(count),
@@ -137,6 +141,8 @@ export async function getTimeline({
       durationSeconds: row.duration_seconds,
       activityDate: row.activity_date,
       visibility: row.visibility,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
       createdAt: row.created_at,
       reactionCount: row.reactions?.[0]?.count ?? 0,
       commentCount: row.comments?.[0]?.count ?? 0,
